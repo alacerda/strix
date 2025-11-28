@@ -226,6 +226,20 @@
             border: 1px solid var(--border-color);
         }
 
+        .message.status-message {
+            align-self: center;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--info);
+            max-width: 90%;
+            text-align: center;
+            color: var(--info);
+        }
+
+        .message.status-message .message-header {
+            color: var(--info);
+            font-weight: 600;
+        }
+
         .message-header {
             font-size: 0.75rem;
             color: var(--text-muted);
@@ -1241,6 +1255,7 @@
             selectedAgentId: null,
             messages: {},
             toolExecutions: {},
+            statusMessages: {},
             vulnerabilities: [],
             stats: {
                 agents: 0,
@@ -1797,6 +1812,19 @@
                 case 'stats_updated':
                     updateStatsFromData(message.data);
                     break;
+                case 'status_message':
+                    const statusScanId = message.scan_id || appState.currentScanId || 'global';
+                    if (!appState.statusMessages[statusScanId]) {
+                        appState.statusMessages[statusScanId] = [];
+                    }
+                    appState.statusMessages[statusScanId].push({
+                        message: message.data.message,
+                        timestamp: new Date((message.data.timestamp || Date.now() / 1000) * 1000)
+                    });
+                    if (statusScanId === appState.currentScanId || (!message.scan_id && appState.currentScanId)) {
+                        renderChatMessages();
+                    }
+                    break;
             }
         }
 
@@ -1979,6 +2007,16 @@
             container.textContent = ''; // Clear safely
 
             if (!appState.selectedAgentId) {
+                const statusMessages = appState.statusMessages[appState.currentScanId] || [];
+                if (statusMessages.length > 0) {
+                    statusMessages.forEach(statusMsg => {
+                        const statusEl = createStatusMessageElement(statusMsg);
+                        container.appendChild(statusEl);
+                    });
+                    container.scrollTop = container.scrollHeight;
+                    return;
+                }
+                
                 const emptyState = document.createElement('div');
                 emptyState.className = 'empty-state';
                 
@@ -2037,6 +2075,24 @@
             
             const content = document.createElement('div');
             content.textContent = message.content;
+            div.appendChild(content);
+            
+            return div;
+        }
+
+        function createStatusMessageElement(statusMsg) {
+            const div = document.createElement('div');
+            div.className = 'message status-message';
+            
+            const time = formatTime(statusMsg.timestamp);
+            
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            header.textContent = `Status • ${time}`;
+            div.appendChild(header);
+            
+            const content = document.createElement('div');
+            content.textContent = statusMsg.message;
             div.appendChild(content);
             
             return div;
@@ -2595,25 +2651,6 @@
             }
         });
         document.getElementById('stopButton').addEventListener('click', stopAgent);
-        
-        // Drawer event listeners
-        document.getElementById('drawerCloseButton').addEventListener('click', closeVulnerabilityDrawer);
-        document.getElementById('vulnerabilityDrawerOverlay').addEventListener('click', closeVulnerabilityDrawer);
-        
-        // Prevent drawer from closing when clicking inside it
-        document.getElementById('vulnerabilityDrawer').addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
-        
-        // Close drawer on ESC key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const drawer = document.getElementById('vulnerabilityDrawer');
-                if (drawer.classList.contains('active')) {
-                    closeVulnerabilityDrawer();
-                }
-            }
-        });
 
         // Initialization
         async function init() {
@@ -2638,6 +2675,35 @@
                 renderSeverityBreakdown();
                 renderVulnerabilities();
             }
+            
+            // Drawer event listeners (moved here to ensure elements exist)
+            const drawerCloseButton = document.getElementById('drawerCloseButton');
+            const drawerOverlay = document.getElementById('vulnerabilityDrawerOverlay');
+            const drawer = document.getElementById('vulnerabilityDrawer');
+            
+            if (drawerCloseButton) {
+                drawerCloseButton.addEventListener('click', closeVulnerabilityDrawer);
+            }
+            
+            if (drawerOverlay) {
+                drawerOverlay.addEventListener('click', closeVulnerabilityDrawer);
+            }
+            
+            if (drawer) {
+                drawer.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+            
+            // Close drawer on ESC key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const drawer = document.getElementById('vulnerabilityDrawer');
+                    if (drawer && drawer.classList.contains('active')) {
+                        closeVulnerabilityDrawer();
+                    }
+                }
+            });
         }
 
         // Start when DOM is ready

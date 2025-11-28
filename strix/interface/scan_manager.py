@@ -307,6 +307,11 @@ class ScanManager:
         # Start scan in background task
         async def run_scan():
             try:
+                try:
+                    from strix.interface.web_server import broadcast_status_message
+                    broadcast_status_message(scan_id, "Agent started. Ready to begin scan.")
+                except Exception:
+                    pass
                 await scan_info.agent.execute_scan(scan_info.scan_config)
                 scan_info.status = "completed"
                 scan_info.end_time = datetime.now(UTC).isoformat()
