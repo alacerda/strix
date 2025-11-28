@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -127,6 +128,9 @@ class Tracer:
         }
 
         self.agents[agent_id] = agent_data
+        # Save trace data periodically (every 10 agent creations)
+        if len(self.agents) % 10 == 0:
+            self.save_trace_data()
 
     def log_chat_message(
         self,
@@ -148,6 +152,9 @@ class Tracer:
         }
 
         self.chat_messages.append(message_data)
+        # Save trace data periodically (every 50 messages)
+        if len(self.chat_messages) % 50 == 0:
+            self.save_trace_data()
         return message_id
 
     def log_tool_execution_start(self, agent_id: str, tool_name: str, args: dict[str, Any]) -> int:
@@ -172,6 +179,10 @@ class Tracer:
         if agent_id in self.agents:
             self.agents[agent_id]["tool_executions"].append(execution_id)
 
+        # Save trace data periodically (every 20 tool executions)
+        if len(self.tool_executions) % 20 == 0:
+            self.save_trace_data()
+        
         return execution_id
 
     def update_tool_execution(
@@ -181,6 +192,9 @@ class Tracer:
             self.tool_executions[execution_id]["status"] = status
             self.tool_executions[execution_id]["result"] = result
             self.tool_executions[execution_id]["completed_at"] = datetime.now(UTC).isoformat()
+            # Save trace data when tool execution completes
+            if status in ("completed", "failed", "error"):
+                self.save_trace_data()
 
     def update_agent_status(
         self, agent_id: str, status: str, error_message: str | None = None
@@ -190,6 +204,8 @@ class Tracer:
             self.agents[agent_id]["updated_at"] = datetime.now(UTC).isoformat()
             if error_message:
                 self.agents[agent_id]["error_message"] = error_message
+            # Save trace data when agent status changes
+            self.save_trace_data()
 
     def set_scan_config(self, config: dict[str, Any]) -> None:
         self.scan_config = config
@@ -201,6 +217,8 @@ class Tracer:
             }
         )
         self.get_run_dir()
+        # Try to load existing trace data if available
+        self.load_trace_data()
 
     def save_run_data(self, mark_complete: bool = False) -> None:
         try:
@@ -333,5 +351,71 @@ class Tracer:
             "total_tokens": total_stats["input_tokens"] + total_stats["output_tokens"],
         }
 
+    def save_trace_data(self) -> None:
+        """Save trace data (agents, messages, tool executions) to disk."""
+        try:
+            run_dir = self.get_run_dir()
+            trace_file = run_dir / "trace_data.json"
+            
+            # Convert tool_executions dict keys to strings for JSON serialization
+            tool_executions_serializable = {
+                str(k): v for k, v in self.tool_executions.items()
+            }
+            
+            trace_data = {
+                "agents": self.agents,
+                "chat_messages": self.chat_messages,
+                "tool_executions": tool_executions_serializable,
+                "next_execution_id": self._next_execution_id,
+                "next_message_id": self._next_message_id,
+            }
+            
+            with trace_file.open("w", encoding="utf-8") as f:
+                json.dump(trace_data, f, indent=2, default=str)
+            
+            logger.debug(f"Saved trace data to: {trace_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save trace data: {e}")
+
+    def load_trace_data(self) -> None:
+        """Load trace data (agents, messages, tool executions) from disk."""
+        try:
+            run_dir = self.get_run_dir()
+            trace_file = run_dir / "trace_data.json"
+            
+            if not trace_file.exists():
+                return
+            
+            with trace_file.open("r", encoding="utf-8") as f:
+                trace_data = json.load(f)
+            
+            # Load agents
+            if "agents" in trace_data:
+                self.agents = trace_data["agents"]
+            
+            # Load chat messages
+            if "chat_messages" in trace_data:
+                self.chat_messages = trace_data["chat_messages"]
+            
+            # Load tool executions (convert string keys back to int)
+            if "tool_executions" in trace_data:
+                self.tool_executions = {
+                    int(k): v for k, v in trace_data["tool_executions"].items()
+                }
+            
+            # Restore next IDs
+            if "next_execution_id" in trace_data:
+                self._next_execution_id = trace_data["next_execution_id"]
+            if "next_message_id" in trace_data:
+                self._next_message_id = trace_data["next_message_id"]
+            
+            logger.info(f"Loaded trace data from: {trace_file}")
+            logger.info(f"  - {len(self.agents)} agents")
+            logger.info(f"  - {len(self.chat_messages)} messages")
+            logger.info(f"  - {len(self.tool_executions)} tool executions")
+        except Exception as e:
+            logger.warning(f"Failed to load trace data: {e}")
+
     def cleanup(self) -> None:
+        self.save_trace_data()
         self.save_run_data(mark_complete=True)

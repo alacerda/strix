@@ -13,6 +13,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from strix.interface.scan_manager import ScanManager
+from strix.interface.utils import (
+    assign_workspace_subdirs,
+    clone_repository,
+    collect_local_sources,
+    generate_run_name,
+    infer_target_type,
+)
 from strix.telemetry.tracer import get_global_tracer
 
 logger = logging.getLogger(__name__)
@@ -22,47 +30,67 @@ _event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 _event_processor_task: asyncio.Task[Any] | None = None
 
 
+class WebSocketConnection:
+    """Represents a WebSocket connection with subscribed scans."""
+
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        self.subscribed_scans: set[str] = set()  # Empty set means all scans
+
+
 class WebSocketManager:
     """Manages WebSocket connections for real-time updates."""
 
     def __init__(self) -> None:
-        self.active_connections: list[WebSocket] = []
+        self.active_connections: list[WebSocketConnection] = []
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket) -> WebSocketConnection:
         """Accept a new WebSocket connection."""
         await websocket.accept()
-        self.active_connections.append(websocket)
+        conn = WebSocketConnection(websocket)
+        self.active_connections.append(conn)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+        return conn
 
-    def disconnect(self, websocket: WebSocket) -> None:
+    def disconnect(self, conn: WebSocketConnection) -> None:
         """Remove a WebSocket connection."""
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        if conn in self.active_connections:
+            self.active_connections.remove(conn)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
 
-    async def broadcast(self, event_type: str, data: dict[str, Any]) -> None:
-        """Broadcast an event to all connected clients."""
+    async def broadcast(
+        self, event_type: str, data: dict[str, Any], scan_id: str | None = None
+    ) -> None:
+        """Broadcast an event to connected clients.
+        
+        If scan_id is provided, only send to clients subscribed to that scan.
+        If scan_id is None, send to all clients.
+        """
         if not self.active_connections:
             return
 
         message = {
             "type": event_type,
             "data": data,
+            "scan_id": scan_id,
             "timestamp": asyncio.get_event_loop().time(),
         }
 
         message_json = json.dumps(message)
-        disconnected: list[WebSocket] = []
+        disconnected: list[WebSocketConnection] = []
 
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message_json)
-            except Exception as e:
-                logger.warning(f"Failed to send message to WebSocket: {e}")
-                disconnected.append(connection)
+        for conn in self.active_connections:
+            # If connection has no subscribed scans, send all events
+            # Otherwise, only send if scan_id matches or is None
+            if not conn.subscribed_scans or scan_id is None or scan_id in conn.subscribed_scans:
+                try:
+                    await conn.websocket.send_text(message_json)
+                except Exception as e:
+                    logger.warning(f"Failed to send message to WebSocket: {e}")
+                    disconnected.append(conn)
 
-        for connection in disconnected:
-            self.disconnect(connection)
+        for conn in disconnected:
+            self.disconnect(conn)
 
 
 # Global WebSocket manager
@@ -82,20 +110,27 @@ async def process_event_queue() -> None:
 
             event_type = event.get("type")
             data = event.get("data", {})
+            scan_id = event.get("scan_id")
 
             # Broadcast based on event type
             if event_type == "agent_created":
-                await websocket_manager.broadcast("agent_created", data)
+                await websocket_manager.broadcast("agent_created", data, scan_id)
             elif event_type == "agent_updated":
-                await websocket_manager.broadcast("agent_updated", data)
+                await websocket_manager.broadcast("agent_updated", data, scan_id)
             elif event_type == "message":
-                await websocket_manager.broadcast("message", data)
+                await websocket_manager.broadcast("message", data, scan_id)
             elif event_type == "tool_execution":
-                await websocket_manager.broadcast("tool_execution", data)
+                await websocket_manager.broadcast("tool_execution", data, scan_id)
             elif event_type == "vulnerability_found":
-                await websocket_manager.broadcast("vulnerability_found", data)
+                await websocket_manager.broadcast("vulnerability_found", data, scan_id)
             elif event_type == "stats_updated":
-                await websocket_manager.broadcast("stats_updated", data)
+                await websocket_manager.broadcast("stats_updated", data, scan_id)
+            elif event_type == "scan_created":
+                await websocket_manager.broadcast("scan_created", data, scan_id)
+            elif event_type == "scan_updated":
+                await websocket_manager.broadcast("scan_updated", data, scan_id)
+            elif event_type == "scan_deleted":
+                await websocket_manager.broadcast("scan_deleted", data, scan_id)
 
             _event_queue.task_done()
         except asyncio.CancelledError:
@@ -152,6 +187,316 @@ async def serve_index() -> FileResponse:
 
 
 # REST API Endpoints
+
+# Scan Management Endpoints
+
+
+class CreateScanRequest(BaseModel):
+    """Request model for creating a scan."""
+
+    targets: list[str]
+    user_instructions: str = ""
+    run_name: str | None = None
+    max_iterations: int = 300
+
+
+class MessageRequest(BaseModel):
+    """Request model for sending a message."""
+
+    content: str
+
+
+@app.get("/api/scans")
+async def list_scans() -> dict[str, Any]:
+    """List all scans."""
+    scan_manager = ScanManager.get_instance()
+    scans = scan_manager.list_scans()
+    return {"scans": scans}
+
+
+@app.post("/api/scans")
+async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
+    """Create a new scan."""
+    scan_manager = ScanManager.get_instance()
+
+    # Process targets
+    targets_info = []
+    for target in request.targets:
+        try:
+            target_type, target_dict = infer_target_type(target)
+            display_target = (
+                target_dict.get("target_path", target)
+                if target_type == "local_code"
+                else target
+            )
+            targets_info.append(
+                {"type": target_type, "details": target_dict, "original": display_target}
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid target '{target}': {e}") from e
+
+    assign_workspace_subdirs(targets_info)
+
+    # Generate run name if not provided
+    run_name = request.run_name or generate_run_name(targets_info)
+
+    # Clone repositories if needed
+    for target_info in targets_info:
+        if target_info["type"] == "repository":
+            repo_url = target_info["details"]["target_repo"]
+            dest_name = target_info["details"].get("workspace_subdir")
+            cloned_path = clone_repository(repo_url, run_name, dest_name)
+            target_info["details"]["cloned_repo_path"] = cloned_path
+
+    # Collect local sources
+    local_sources = collect_local_sources(targets_info)
+
+    # Create scan
+    scan_id = scan_manager.create_scan(
+        targets=targets_info,
+        user_instructions=request.user_instructions,
+        run_name=run_name,
+        max_iterations=request.max_iterations,
+        local_sources=local_sources,
+    )
+
+    # Start scan in background
+    await scan_manager.start_scan(scan_id)
+
+    # Broadcast scan created event
+    scan_info = scan_manager.get_scan(scan_id)
+    if scan_info:
+        await websocket_manager.broadcast(
+            "scan_created",
+            scan_info.to_dict(),
+            scan_id,
+        )
+
+    return {"scan_id": scan_id, "status": "created"}
+
+
+@app.get("/api/scans/{scan_id}")
+async def get_scan(scan_id: str) -> dict[str, Any]:
+    """Get details of a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+    return scan_info.to_dict()
+
+
+@app.post("/api/scans/{scan_id}/stop")
+async def stop_scan(scan_id: str) -> dict[str, Any]:
+    """Stop a running scan."""
+    scan_manager = ScanManager.get_instance()
+    success = scan_manager.stop_scan(scan_id)
+    if not success:
+        raise HTTPException(
+            status_code=400, detail=f"Scan {scan_id} cannot be stopped (not running)"
+        )
+
+    # Broadcast scan updated event
+    scan_info = scan_manager.get_scan(scan_id)
+    if scan_info:
+        await websocket_manager.broadcast(
+            "scan_updated",
+            scan_info.to_dict(),
+            scan_id,
+        )
+
+    return {"success": True, "message": f"Scan {scan_id} stopped"}
+
+
+@app.delete("/api/scans/{scan_id}")
+async def delete_scan(scan_id: str) -> dict[str, Any]:
+    """Delete a scan and all its associated data."""
+    scan_manager = ScanManager.get_instance()
+    
+    # Check if scan exists
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+    
+    # Delete the scan
+    success = scan_manager.delete_scan(scan_id)
+    if not success:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete scan {scan_id}"
+        )
+    
+    # Broadcast scan deleted event
+    await websocket_manager.broadcast(
+        "scan_deleted",
+        {"scan_id": scan_id},
+        scan_id,
+    )
+    
+    return {"success": True, "message": f"Scan {scan_id} deleted successfully"}
+
+
+@app.get("/api/scans/{scan_id}/agents")
+async def get_scan_agents(scan_id: str) -> dict[str, Any]:
+    """Get all agents for a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    return {"agents": scan_info.tracer.agents}
+
+
+@app.get("/api/scans/{scan_id}/agents/{agent_id}")
+async def get_scan_agent(scan_id: str, agent_id: str) -> dict[str, Any]:
+    """Get details of a specific agent in a scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if agent_id not in scan_info.tracer.agents:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    return scan_info.tracer.agents[agent_id]
+
+
+@app.get("/api/scans/{scan_id}/agents/{agent_id}/messages")
+async def get_scan_agent_messages(scan_id: str, agent_id: str) -> dict[str, Any]:
+    """Get messages for a specific agent in a scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    messages = [
+        msg for msg in scan_info.tracer.chat_messages if msg.get("agent_id") == agent_id
+    ]
+    return {"messages": messages}
+
+
+@app.get("/api/scans/{scan_id}/agents/{agent_id}/tools")
+async def get_scan_agent_tools(scan_id: str, agent_id: str) -> dict[str, Any]:
+    """Get tool executions for a specific agent in a scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    tools = scan_info.tracer.get_agent_tools(agent_id)
+    return {"tools": tools}
+
+
+@app.get("/api/scans/{scan_id}/vulnerabilities")
+async def get_scan_vulnerabilities(scan_id: str) -> dict[str, Any]:
+    """Get all vulnerabilities for a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    return {"vulnerabilities": scan_info.tracer.vulnerability_reports}
+
+
+@app.get("/api/scans/{scan_id}/stats")
+async def get_scan_stats(scan_id: str) -> dict[str, Any]:
+    """Get statistics for a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    llm_stats = scan_info.tracer.get_total_llm_stats()
+    total_stats = llm_stats.get("total", {})
+
+    return {
+        "agents": len(scan_info.tracer.agents),
+        "tools": scan_info.tracer.get_real_tool_count(),
+        "vulnerabilities": len(scan_info.tracer.vulnerability_reports),
+        "llm_stats": {
+            "input_tokens": total_stats.get("input_tokens", 0),
+            "output_tokens": total_stats.get("output_tokens", 0),
+            "cached_tokens": total_stats.get("cached_tokens", 0),
+            "cost": total_stats.get("cost", 0.0),
+        },
+    }
+
+
+@app.post("/api/scans/{scan_id}/agents/{agent_id}/message")
+async def send_scan_agent_message(
+    scan_id: str, agent_id: str, request: MessageRequest
+) -> dict[str, Any]:
+    """Send a message to an agent in a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if agent_id not in scan_info.tracer.agents:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    # Log the message
+    message_id = scan_info.tracer.log_chat_message(
+        content=request.content,
+        role="user",
+        agent_id=agent_id,
+    )
+
+    # Send message to agent via agents_graph
+    try:
+        from strix.tools.agents_graph.agents_graph_actions import send_user_message_to_agent
+
+        send_user_message_to_agent(agent_id, request.content)
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Failed to send message to agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
+
+    # Broadcast via WebSocket
+    await websocket_manager.broadcast(
+        "message",
+        {
+            "agent_id": agent_id,
+            "message_id": message_id,
+            "role": "user",
+            "content": request.content,
+        },
+        scan_id,
+    )
+
+    return {"success": True, "message_id": message_id}
+
+
+@app.post("/api/scans/{scan_id}/agents/{agent_id}/stop")
+async def stop_scan_agent(scan_id: str, agent_id: str) -> dict[str, Any]:
+    """Stop an agent in a specific scan."""
+    scan_manager = ScanManager.get_instance()
+    scan_info = scan_manager.get_scan(scan_id)
+    if not scan_info:
+        raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if agent_id not in scan_info.tracer.agents:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    try:
+        from strix.tools.agents_graph.agents_graph_actions import stop_agent
+
+        result = stop_agent(agent_id)
+        if result.get("success"):
+            scan_info.tracer.update_agent_status(agent_id, "stopped")
+            await websocket_manager.broadcast(
+                "agent_updated",
+                {"agent_id": agent_id, "status": "stopped"},
+                scan_id,
+            )
+            return {"success": True, "message": result.get("message", "Agent stopped")}
+        else:
+            raise HTTPException(
+                status_code=500, detail=result.get("error", "Failed to stop agent")
+            )
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Failed to stop agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to stop agent: {e}") from e
+
+
+# Legacy endpoints (for backward compatibility with single-scan mode)
 
 
 @app.get("/api/agents")
@@ -242,12 +587,6 @@ async def get_stats() -> dict[str, Any]:
     }
 
 
-class MessageRequest(BaseModel):
-    """Request model for sending a message."""
-
-    content: str
-
-
 @app.post("/api/agents/{agent_id}/message")
 async def send_agent_message(agent_id: str, request: MessageRequest) -> dict[str, Any]:
     """Send a message to an agent."""
@@ -323,10 +662,61 @@ async def stop_agent(agent_id: str) -> dict[str, Any]:
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket endpoint for real-time updates."""
-    await websocket_manager.connect(websocket)
+    """WebSocket endpoint for real-time updates.
+    
+    Clients can subscribe to specific scans by sending a subscribe message.
+    """
+    conn = await websocket_manager.connect(websocket)
+    
+    # Check if scan_id is provided in query string (for backward compatibility)
+    scan_id = None
     try:
-        # Send initial state
+        query_string = websocket.url.query
+        if query_string:
+            from urllib.parse import parse_qs
+            params = parse_qs(query_string)
+            if "scan_id" in params:
+                scan_id = params["scan_id"][0]
+                conn.subscribed_scans.add(scan_id)
+    except Exception:
+        pass  # Ignore errors parsing query string
+    
+    # Subscribe to specific scan if provided
+    if scan_id:
+        conn.subscribed_scans.add(scan_id)
+        scan_manager = ScanManager.get_instance()
+        scan_info = scan_manager.get_scan(scan_id)
+        if scan_info:
+            # Send initial state for this scan
+            await websocket.send_json(
+                {
+                    "type": "initial_state",
+                    "scan_id": scan_id,
+                    "data": {
+                        "agents": scan_info.tracer.agents,
+                        "vulnerabilities": scan_info.tracer.vulnerability_reports,
+                        "stats": {
+                            "agents": len(scan_info.tracer.agents),
+                            "tools": scan_info.tracer.get_real_tool_count(),
+                            "vulnerabilities": len(scan_info.tracer.vulnerability_reports),
+                        },
+                    },
+                }
+            )
+    else:
+        # Send all scans list
+        scan_manager = ScanManager.get_instance()
+        scans = scan_manager.list_scans()
+        await websocket.send_json(
+            {
+                "type": "initial_state",
+                "data": {
+                    "scans": scans,
+                },
+            }
+        )
+        
+        # Also send legacy single-scan state if global tracer exists
         tracer = get_global_tracer()
         if tracer:
             await websocket.send_json(
@@ -344,13 +734,28 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 }
             )
 
-        # Keep connection alive and handle incoming messages
+    # Keep connection alive and handle incoming messages
+    try:
         while True:
             try:
                 data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-                # Handle ping/pong or other client messages if needed
-                if data == "ping":
-                    await websocket.send_text("pong")
+                try:
+                    message = json.loads(data)
+                    # Handle subscription messages
+                    if message.get("type") == "subscribe":
+                        scan_ids = message.get("scan_ids", [])
+                        if scan_ids:
+                            conn.subscribed_scans.update(scan_ids)
+                        else:
+                            conn.subscribed_scans.clear()  # Subscribe to all
+                    elif message.get("type") == "unsubscribe":
+                        scan_ids = message.get("scan_ids", [])
+                        for sid in scan_ids:
+                            conn.subscribed_scans.discard(sid)
+                except (json.JSONDecodeError, KeyError):
+                    # Handle ping/pong
+                    if data == "ping":
+                        await websocket.send_text("pong")
             except asyncio.TimeoutError:
                 # Send ping to keep connection alive
                 await websocket.send_text(json.dumps({"type": "ping"}))
@@ -359,39 +764,90 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        websocket_manager.disconnect(websocket)
+        websocket_manager.disconnect(conn)
 
 
-# Event broadcasting functions (called from Tracer)
+# Event broadcasting functions (called from Tracer/ScanManager)
 # These functions are thread-safe and can be called from any thread
 
 
-def broadcast_agent_created(agent_id: str, agent_data: dict[str, Any]) -> None:
+def broadcast_agent_created(
+    scan_id: str, agent_id: str, agent_data: dict[str, Any]
+) -> None:
     """Broadcast agent creation event (thread-safe)."""
+    _event_queue.put(
+        {
+            "type": "agent_created",
+            "scan_id": scan_id,
+            "data": {"agent_id": agent_id, **agent_data},
+        }
+    )
+
+
+def broadcast_agent_updated(scan_id: str, agent_id: str, updates: dict[str, Any]) -> None:
+    """Broadcast agent update event (thread-safe)."""
+    _event_queue.put(
+        {"type": "agent_updated", "scan_id": scan_id, "data": {"agent_id": agent_id, **updates}}
+    )
+
+
+def broadcast_message(scan_id: str, agent_id: str, message_data: dict[str, Any]) -> None:
+    """Broadcast new message event (thread-safe)."""
+    _event_queue.put(
+        {"type": "message", "scan_id": scan_id, "data": {"agent_id": agent_id, **message_data}}
+    )
+
+
+def broadcast_tool_execution(scan_id: str, agent_id: str, tool_data: dict[str, Any]) -> None:
+    """Broadcast tool execution event (thread-safe)."""
+    _event_queue.put(
+        {"type": "tool_execution", "scan_id": scan_id, "data": {"agent_id": agent_id, **tool_data}}
+    )
+
+
+def broadcast_vulnerability(scan_id: str, report_id: str, vuln_data: dict[str, Any]) -> None:
+    """Broadcast vulnerability found event (thread-safe)."""
+    _event_queue.put(
+        {
+            "type": "vulnerability_found",
+            "scan_id": scan_id,
+            "data": {"report_id": report_id, **vuln_data},
+        }
+    )
+
+
+def broadcast_stats(scan_id: str, stats: dict[str, Any]) -> None:
+    """Broadcast stats update event (thread-safe)."""
+    _event_queue.put({"type": "stats_updated", "scan_id": scan_id, "data": stats})
+
+
+# Legacy broadcasting functions (for backward compatibility with single-scan mode)
+def broadcast_agent_created_legacy(agent_id: str, agent_data: dict[str, Any]) -> None:
+    """Broadcast agent creation event (legacy, no scan_id)."""
     _event_queue.put({"type": "agent_created", "data": {"agent_id": agent_id, **agent_data}})
 
 
-def broadcast_agent_updated(agent_id: str, updates: dict[str, Any]) -> None:
-    """Broadcast agent update event (thread-safe)."""
+def broadcast_agent_updated_legacy(agent_id: str, updates: dict[str, Any]) -> None:
+    """Broadcast agent update event (legacy, no scan_id)."""
     _event_queue.put({"type": "agent_updated", "data": {"agent_id": agent_id, **updates}})
 
 
-def broadcast_message(agent_id: str, message_data: dict[str, Any]) -> None:
-    """Broadcast new message event (thread-safe)."""
+def broadcast_message_legacy(agent_id: str, message_data: dict[str, Any]) -> None:
+    """Broadcast new message event (legacy, no scan_id)."""
     _event_queue.put({"type": "message", "data": {"agent_id": agent_id, **message_data}})
 
 
-def broadcast_tool_execution(agent_id: str, tool_data: dict[str, Any]) -> None:
-    """Broadcast tool execution event (thread-safe)."""
+def broadcast_tool_execution_legacy(agent_id: str, tool_data: dict[str, Any]) -> None:
+    """Broadcast tool execution event (legacy, no scan_id)."""
     _event_queue.put({"type": "tool_execution", "data": {"agent_id": agent_id, **tool_data}})
 
 
-def broadcast_vulnerability(report_id: str, vuln_data: dict[str, Any]) -> None:
-    """Broadcast vulnerability found event (thread-safe)."""
+def broadcast_vulnerability_legacy(report_id: str, vuln_data: dict[str, Any]) -> None:
+    """Broadcast vulnerability found event (legacy, no scan_id)."""
     _event_queue.put({"type": "vulnerability_found", "data": {"report_id": report_id, **vuln_data}})
 
 
-def broadcast_stats(stats: dict[str, Any]) -> None:
-    """Broadcast stats update event (thread-safe)."""
+def broadcast_stats_legacy(stats: dict[str, Any]) -> None:
+    """Broadcast stats update event (legacy, no scan_id)."""
     _event_queue.put({"type": "stats_updated", "data": stats})
 

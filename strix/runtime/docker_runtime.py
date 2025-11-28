@@ -397,3 +397,139 @@ class DockerRuntime(AbstractRuntime):
             logger.warning("Container %s not found for destruction.", container_id)
         except DockerException as e:
             logger.warning("Failed to destroy container %s: %s", container_id, e)
+
+    def delete_scan_containers(self, scan_id: str) -> None:
+        """Delete all Docker containers associated with a scan.
+        
+        Uses multiple search strategies to find containers:
+        1. By exact name: strix-scan-{scan_id}
+        2. By label: strix-scan-id={scan_id}
+        3. By name pattern: all containers starting with strix-scan- that have matching label
+        4. By label pattern: all containers with strix-scan-id label, checking if they match
+        
+        Stops and removes all found containers.
+        """
+        logger.info(f"Starting container deletion for scan {scan_id}")
+        container_name = f"strix-scan-{scan_id}"
+        containers_to_remove: dict[str, Container] = {}  # Use dict to avoid duplicates by container ID
+        
+        # Strategy 1: Find container by exact name
+        try:
+            container = self.client.containers.get(container_name)
+            container_id = container.id or "unknown"
+            containers_to_remove[container_id] = container
+            logger.info(f"Found container by exact name: {container_name} (id: {container_id})")
+        except NotFound:
+            logger.debug(f"Container {container_name} not found by exact name")
+        except DockerException as e:
+            logger.warning(f"Error getting container by name {container_name}: {e}")
+        
+        # Strategy 2: Find containers by exact label match
+        try:
+            labeled_containers = self.client.containers.list(
+                all=True, filters={"label": f"strix-scan-id={scan_id}"}
+            )
+            for container in labeled_containers:
+                container_id = container.id or "unknown"
+                if container_id not in containers_to_remove:
+                    containers_to_remove[container_id] = container
+                    logger.info(f"Found container by label: {container.name} (id: {container_id})")
+        except DockerException as e:
+            logger.warning(f"Error finding containers by label for scan {scan_id}: {e}")
+        
+        # Strategy 3: Find all containers with strix-scan-id label and check if they match
+        try:
+            all_labeled_containers = self.client.containers.list(
+                all=True, filters={"label": "strix-scan-id"}
+            )
+            for container in all_labeled_containers:
+                container_id = container.id or "unknown"
+                # Check if this container's label matches our scan_id
+                container_labels = container.labels or {}
+                container_scan_id = container_labels.get("strix-scan-id")
+                if container_scan_id == scan_id and container_id not in containers_to_remove:
+                    containers_to_remove[container_id] = container
+                    logger.info(
+                        f"Found container by label scan (all): {container.name} "
+                        f"(id: {container_id}, scan_id: {container_scan_id})"
+                    )
+        except DockerException as e:
+            logger.warning(f"Error finding all containers with strix-scan-id label: {e}")
+        
+        # Strategy 4: Find all containers with strix-scan- prefix and check labels
+        try:
+            all_containers = self.client.containers.list(all=True)
+            for container in all_containers:
+                container_id = container.id or "unknown"
+                container_name_found = container.name or ""
+                
+                # Check if name starts with strix-scan-
+                if container_name_found.startswith("strix-scan-") and container_id not in containers_to_remove:
+                    # Check labels
+                    container_labels = container.labels or {}
+                    container_scan_id = container_labels.get("strix-scan-id")
+                    if container_scan_id == scan_id:
+                        containers_to_remove[container_id] = container
+                        logger.info(
+                            f"Found container by name pattern: {container_name_found} "
+                            f"(id: {container_id}, scan_id: {container_scan_id})"
+                        )
+                    # Also check if the name itself matches (in case label is missing)
+                    elif container_name_found == container_name:
+                        containers_to_remove[container_id] = container
+                        logger.info(
+                            f"Found container by name pattern (no label): {container_name_found} "
+                            f"(id: {container_id})"
+                        )
+        except DockerException as e:
+            logger.warning(f"Error searching all containers by name pattern: {e}")
+        
+        # Remove all found containers
+        removed_count = 0
+        for container_id, container in containers_to_remove.items():
+            try:
+                container_name_found = container.name or "unknown"
+                container_id_str = container.id or "unknown"
+                
+                logger.info(
+                    f"Processing container for removal: {container_name_found} "
+                    f"(id: {container_id_str}, status: {container.status})"
+                )
+                
+                # Stop container if running
+                if container.status == "running":
+                    logger.info(f"Stopping container {container_name_found} (id: {container_id_str})")
+                    try:
+                        container.stop(timeout=10)
+                        logger.info(f"Successfully stopped container {container_name_found}")
+                    except DockerException as e:
+                        logger.warning(f"Error stopping container {container_name_found}: {e}")
+                        # Continue with removal even if stop fails
+                
+                # Remove container
+                logger.info(f"Removing container {container_name_found} (id: {container_id_str})")
+                container.remove(force=True)
+                removed_count += 1
+                logger.info(f"Successfully removed container {container_name_found} (id: {container_id_str})")
+                
+                # Clear instance state if this was the active container
+                if self._scan_container and self._scan_container.id == container_id_str:
+                    logger.debug("Clearing instance state for removed container")
+                    self._scan_container = None
+                    self._tool_server_port = None
+                    self._tool_server_token = None
+                    
+            except NotFound:
+                logger.debug(f"Container {container.name} already removed (not found)")
+            except DockerException as e:
+                logger.error(f"Failed to remove container {container.name}: {e}", exc_info=True)
+        
+        # Log summary
+        if not containers_to_remove:
+            logger.warning(f"No containers found for scan {scan_id} using any search strategy")
+        else:
+            logger.info(
+                f"Container deletion summary for scan {scan_id}: "
+                f"found {len(containers_to_remove)} container(s), "
+                f"removed {removed_count} container(s)"
+            )

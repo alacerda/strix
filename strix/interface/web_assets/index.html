@@ -471,6 +471,306 @@
             margin-bottom: 1rem;
         }
 
+        /* Scan List View */
+        .scans-list-view {
+            display: none;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            overflow-y: auto;
+            height: 100vh;
+        }
+
+        .scans-list-view.active {
+            display: block;
+        }
+
+        .scans-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .scans-header h1 {
+            font-size: 2rem;
+            color: var(--primary-green);
+        }
+
+        .create-scan-button {
+            padding: 0.75rem 1.5rem;
+            background: var(--primary-green);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: background 0.2s;
+        }
+
+        .create-scan-button:hover {
+            background: var(--primary-green-dark);
+        }
+
+        .scans-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .scan-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .scan-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border-color: var(--primary-green);
+        }
+
+        .scan-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .scan-card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .scan-status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .scan-status-badge.running {
+            background: var(--success);
+            color: white;
+        }
+
+        .scan-status-badge.completed {
+            background: var(--info);
+            color: white;
+        }
+
+        .scan-status-badge.stopped {
+            background: var(--warning);
+            color: white;
+        }
+
+        .scan-status-badge.failed {
+            background: var(--error);
+            color: white;
+        }
+
+        .scan-card-info {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .scan-card-targets {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .scan-card-target {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin: 0.25rem 0;
+        }
+
+        .scan-card-delete-button {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: color 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scan-card-delete-button:hover {
+            color: var(--error);
+            background: rgba(255, 59, 48, 0.1);
+        }
+
+        .scan-card-delete-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Create Scan Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h2 {
+            font-size: 1.5rem;
+            color: var(--primary-green);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-green);
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .target-input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .target-input-group input {
+            flex: 1;
+        }
+
+        .remove-target-button {
+            padding: 0.5rem 1rem;
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .add-target-button {
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 2rem;
+        }
+
+        .modal-button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .modal-button-primary {
+            background: var(--primary-green);
+            color: white;
+        }
+
+        .modal-button-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        /* Scan View (existing interface) */
+        .scan-view {
+            display: none;
+        }
+
+        .scan-view.active {
+            display: flex;
+        }
+
         /* Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -509,7 +809,56 @@
     </style>
 </head>
 <body>
-    <div class="app-container">
+    <!-- Scan List View -->
+    <div class="scans-list-view active" id="scansListView">
+        <div class="scans-header">
+            <h1>🦉 Strix Scans</h1>
+            <button class="create-scan-button" id="createScanButton">+ New Scan</button>
+        </div>
+        <div class="scans-grid" id="scansGrid">
+            <div class="empty-state">
+                <div class="empty-state-icon">🦉</div>
+                <p>No scans yet. Create your first scan to get started.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Scan Modal -->
+    <div class="modal-overlay" id="createScanModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Create New Scan</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <form id="createScanForm">
+                <div class="form-group">
+                    <label>Targets *</label>
+                    <div id="targetInputs">
+                        <div class="target-input-group">
+                            <input type="text" name="target" placeholder="URL, repository, domain, IP, or local path" required />
+                            <button type="button" class="remove-target-button" onclick="removeTargetInput(this)" style="display: none;">Remove</button>
+                        </div>
+                    </div>
+                    <button type="button" class="add-target-button" onclick="addTargetInput()">+ Add Target</button>
+                </div>
+                <div class="form-group">
+                    <label>Instructions (optional)</label>
+                    <textarea name="instructions" placeholder="Special instructions for the penetration test..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Run Name (optional)</label>
+                    <input type="text" name="runName" placeholder="Auto-generated if not provided" />
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="modal-button modal-button-secondary" id="cancelCreateScan">Cancel</button>
+                    <button type="submit" class="modal-button modal-button-primary">Create Scan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scan View (existing interface) -->
+    <div class="app-container scan-view" id="scanView">
         <!-- Left Sidebar - Agents -->
         <div class="sidebar-left">
             <div class="sidebar-header">
@@ -521,7 +870,11 @@
         <!-- Main Panel -->
         <div class="main-panel">
             <div class="main-header">
-                <h1>🦉 Strix Cybersecurity Agent</h1>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button onclick="showScansList()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 0.5rem;">←</button>
+                    <h1>🦉 Strix Cybersecurity Agent</h1>
+                    <span id="scanIdDisplay" style="font-size: 0.9rem; color: var(--text-muted);"></span>
+                </div>
                 <div class="agent-status-bar" id="agentStatusBar">
                     <div class="status-indicator">
                         <span id="statusText">Select an agent</span>
@@ -601,6 +954,8 @@
     <script>
         // Application state
         const appState = {
+            currentScanId: null,
+            scans: [],
             agents: {},
             selectedAgentId: null,
             messages: {},
@@ -618,16 +973,319 @@
             wsConnected: false
         };
 
+        // Routing
+        function handleHashChange() {
+            const hash = window.location.hash.slice(1);
+            if (hash && hash.startsWith('scan/')) {
+                const scanId = hash.replace('scan/', '');
+                showScanView(scanId);
+            } else {
+                showScansList();
+            }
+        }
+
+        function showScansList() {
+            window.location.hash = '';
+            document.getElementById('scansListView').classList.add('active');
+            document.getElementById('scanView').classList.remove('active');
+            loadScans();
+        }
+
+        function showScanView(scanId) {
+            window.location.hash = `scan/${scanId}`;
+            document.getElementById('scansListView').classList.remove('active');
+            document.getElementById('scanView').classList.add('active');
+            appState.currentScanId = scanId;
+            document.getElementById('scanIdDisplay').textContent = scanId;
+            loadScanData(scanId);
+        }
+
+        // Load scans list
+        async function loadScans() {
+            try {
+                const response = await fetch('/api/scans');
+                const data = await response.json();
+                appState.scans = data.scans || [];
+                renderScansList();
+            } catch (error) {
+                console.error('Error loading scans:', error);
+            }
+        }
+
+        async function deleteScan(scanId) {
+            if (!scanId) {
+                console.error('No scan ID provided for deletion');
+                return;
+            }
+
+            // Show confirmation dialog
+            const confirmed = confirm(
+                `Are you sure you want to delete scan "${scanId}"?\n\n` +
+                `This will permanently delete:\n` +
+                `- All scan data and files\n` +
+                `- Associated Docker containers\n\n` +
+                `This action cannot be undone.`
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/scans/${scanId}`, {
+                    method: 'DELETE',
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    throw new Error(errorData.detail || `Failed to delete scan: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log('Scan deleted:', data);
+
+                // If we're viewing the deleted scan, go back to list view
+                if (appState.currentScanId === scanId) {
+                    showScansList();
+                }
+
+                // Reload scans list
+                await loadScans();
+            } catch (error) {
+                console.error('Error deleting scan:', error);
+                alert(`Failed to delete scan: ${error.message}`);
+            }
+        }
+
+        function renderScansList() {
+            const container = document.getElementById('scansGrid');
+            if (appState.scans.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🦉</div>
+                        <p>No scans yet. Create your first scan to get started.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appState.scans.map(scan => {
+                const targets = scan.targets || [];
+                const targetDisplay = targets.length > 0 
+                    ? targets.map(t => t.original || t.details?.target_url || t.details?.target_repo || 'Unknown').join(', ')
+                    : 'No targets';
+                
+                return `
+                    <div class="scan-card" onclick="showScanView('${scan.scan_id}')">
+                        <div class="scan-card-header">
+                            <div class="scan-card-title">${escapeHtml(scan.run_name || scan.scan_id)}</div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="scan-status-badge ${scan.status}">${scan.status}</span>
+                                <button class="scan-card-delete-button" onclick="event.stopPropagation(); deleteScan('${scan.scan_id}');" title="Delete scan">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        <div class="scan-card-info">
+                            <div>Started: ${new Date(scan.start_time).toLocaleString()}</div>
+                            ${scan.end_time ? `<div>Ended: ${new Date(scan.end_time).toLocaleString()}</div>` : ''}
+                        </div>
+                        <div class="scan-card-targets">
+                            <div class="scan-card-target">${escapeHtml(targetDisplay)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Create scan
+        document.getElementById('createScanButton').addEventListener('click', () => {
+            document.getElementById('createScanModal').classList.add('active');
+        });
+
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('createScanModal').classList.remove('active');
+        });
+
+        document.getElementById('cancelCreateScan').addEventListener('click', () => {
+            document.getElementById('createScanModal').classList.remove('active');
+        });
+
+        function addTargetInput() {
+            const container = document.getElementById('targetInputs');
+            const newInput = document.createElement('div');
+            newInput.className = 'target-input-group';
+            newInput.innerHTML = `
+                <input type="text" name="target" placeholder="URL, repository, domain, IP, or local path" required />
+                <button type="button" class="remove-target-button" onclick="removeTargetInput(this)">Remove</button>
+            `;
+            container.appendChild(newInput);
+            updateRemoveButtons();
+        }
+
+        function removeTargetInput(button) {
+            button.parentElement.remove();
+            updateRemoveButtons();
+        }
+
+        function updateRemoveButtons() {
+            const inputs = document.querySelectorAll('.target-input-group');
+            inputs.forEach((input, index) => {
+                const removeButton = input.querySelector('.remove-target-button');
+                if (removeButton) {
+                    removeButton.style.display = inputs.length > 1 ? 'block' : 'none';
+                }
+            });
+        }
+
+        document.getElementById('createScanForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const targets = Array.from(formData.getAll('target')).filter(t => t.trim());
+            
+            if (targets.length === 0) {
+                alert('Please provide at least one target');
+                return;
+            }
+
+            const requestData = {
+                targets: targets,
+                user_instructions: formData.get('instructions') || '',
+                run_name: formData.get('runName') || null,
+            };
+
+            try {
+                const response = await fetch('/api/scans', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create scan');
+                }
+
+                const data = await response.json();
+                document.getElementById('createScanModal').classList.remove('active');
+                e.target.reset();
+                showScanView(data.scan_id);
+            } catch (error) {
+                console.error('Error creating scan:', error);
+                alert(`Error creating scan: ${error.message}`);
+            }
+        });
+
+        // Load scan data
+        async function loadScanData(scanId) {
+            if (!scanId) return;
+
+            // Subscribe to this scan's WebSocket events
+            if (appState.ws && appState.wsConnected) {
+                appState.ws.send(JSON.stringify({
+                    type: 'subscribe',
+                    scan_ids: [scanId]
+                }));
+            }
+
+            // Load initial data
+            try {
+                // Load agents
+                const agentsResponse = await fetch(`/api/scans/${scanId}/agents`);
+                const agentsData = await agentsResponse.json();
+                appState.agents = agentsData.agents || {};
+
+                // Load vulnerabilities
+                const vulnResponse = await fetch(`/api/scans/${scanId}/vulnerabilities`);
+                const vulnData = await vulnResponse.json();
+                appState.vulnerabilities = vulnData.vulnerabilities || [];
+
+                // Load stats
+                const statsResponse = await fetch(`/api/scans/${scanId}/stats`);
+                const statsData = await statsResponse.json();
+                updateStatsFromData(statsData);
+
+                // Load messages and tools for each agent
+                for (const agentId of Object.keys(appState.agents)) {
+                    await loadAgentData(scanId, agentId);
+                }
+
+                renderAgentsTree();
+                renderVulnerabilities();
+                renderSeverityBreakdown();
+                renderStats();
+            } catch (error) {
+                console.error(`Error loading data for scan ${scanId}:`, error);
+            }
+        }
+
+        async function loadAgentData(scanId, agentId) {
+            if (!scanId) {
+                // Legacy mode - use old endpoints
+                try {
+                    const messagesResponse = await fetch(`/api/agents/${agentId}/messages`);
+                    const messagesData = await messagesResponse.json();
+                    appState.messages[agentId] = (messagesData.messages || []).map(msg => ({
+                        ...msg,
+                        timestamp: new Date(msg.timestamp)
+                    }));
+
+                    const toolsResponse = await fetch(`/api/agents/${agentId}/tools`);
+                    const toolsData = await toolsResponse.json();
+                    appState.toolExecutions[agentId] = (toolsData.tools || []).map(tool => ({
+                        ...tool,
+                        timestamp: new Date(tool.timestamp || tool.started_at)
+                    }));
+                } catch (error) {
+                    console.error(`Error loading data for agent ${agentId}:`, error);
+                }
+                return;
+            }
+
+            try {
+                const messagesResponse = await fetch(`/api/scans/${scanId}/agents/${agentId}/messages`);
+                const messagesData = await messagesResponse.json();
+                appState.messages[agentId] = (messagesData.messages || []).map(msg => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                }));
+
+                const toolsResponse = await fetch(`/api/scans/${scanId}/agents/${agentId}/tools`);
+                const toolsData = await toolsResponse.json();
+                appState.toolExecutions[agentId] = (toolsData.tools || []).map(tool => ({
+                    ...tool,
+                    timestamp: new Date(tool.timestamp || tool.started_at)
+                }));
+
+                if (agentId === appState.selectedAgentId) {
+                    renderChatMessages();
+                }
+            } catch (error) {
+                console.error(`Error loading data for agent ${agentId}:`, error);
+            }
+        }
+
         // WebSocket connection
-        function connectWebSocket() {
+        function connectWebSocket(scanId = null) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            let wsUrl = `${protocol}//${window.location.host}/ws`;
+            if (scanId) {
+                wsUrl += `?scan_id=${scanId}`;
+            }
             
             appState.ws = new WebSocket(wsUrl);
             
             appState.ws.onopen = () => {
                 console.log('WebSocket connected');
                 appState.wsConnected = true;
+                if (scanId) {
+                    appState.ws.send(JSON.stringify({
+                        type: 'subscribe',
+                        scan_ids: [scanId]
+                    }));
+                }
             };
             
             appState.ws.onmessage = (event) => {
@@ -648,13 +1306,25 @@
                 console.log('WebSocket disconnected');
                 appState.wsConnected = false;
                 // Attempt to reconnect after 3 seconds
-                setTimeout(connectWebSocket, 3000);
+                setTimeout(() => connectWebSocket(appState.currentScanId), 3000);
             };
         }
 
         function handleWebSocketMessage(message) {
+            // Filter by scan_id if we're viewing a specific scan
+            if (appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
+                return; // Ignore events from other scans
+            }
+
             switch (message.type) {
                 case 'initial_state':
+                    if (message.data.scans) {
+                        // Scan list view
+                        appState.scans = message.data.scans;
+                        if (document.getElementById('scansListView').classList.contains('active')) {
+                            renderScansList();
+                        }
+                    }
                     if (message.data.agents) {
                         appState.agents = message.data.agents;
                         renderAgentsTree();
@@ -666,6 +1336,30 @@
                     }
                     if (message.data.stats) {
                         updateStatsFromData(message.data.stats);
+                    }
+                    break;
+                case 'scan_created':
+                case 'scan_updated':
+                    // Reload scans list
+                    loadScans();
+                    // If this is the current scan, reload its data
+                    if (message.scan_id === appState.currentScanId) {
+                        loadScanData(appState.currentScanId);
+                    }
+                    break;
+                case 'scan_deleted':
+                    // Remove scan from state
+                    if (message.data && message.data.scan_id) {
+                        const deletedScanId = message.data.scan_id;
+                        appState.scans = appState.scans.filter(scan => scan.scan_id !== deletedScanId);
+                        
+                        // If we're viewing the deleted scan, go back to list view
+                        if (appState.currentScanId === deletedScanId) {
+                            showScansList();
+                        }
+                        
+                        // Re-render scans list
+                        renderScansList();
                     }
                     break;
                 case 'agent_created':
@@ -682,7 +1376,7 @@
                         };
                         renderAgentsTree();
                         // Load agent data asynchronously
-                        loadAgentData(agentId);
+                        loadAgentData(appState.currentScanId, agentId);
                     }
                     break;
                 case 'agent_updated':
@@ -771,8 +1465,13 @@
             renderStats();
         }
 
-        // Load initial data from API
+        // Load initial data from API (legacy mode)
         async function loadInitialData() {
+            if (appState.currentScanId) {
+                await loadScanData(appState.currentScanId);
+                return;
+            }
+
             try {
                 // Load agents
                 const agentsResponse = await fetch('/api/agents');
@@ -791,7 +1490,7 @@
 
                 // Load messages and tools for each agent
                 for (const agentId of Object.keys(appState.agents)) {
-                    await loadAgentData(agentId);
+                    await loadAgentData(null, agentId);
                 }
 
                 renderAgentsTree();
@@ -803,36 +1502,15 @@
             }
         }
 
-        async function loadAgentData(agentId) {
-            try {
-                // Load messages
-                const messagesResponse = await fetch(`/api/agents/${agentId}/messages`);
-                const messagesData = await messagesResponse.json();
-                appState.messages[agentId] = (messagesData.messages || []).map(msg => ({
-                    ...msg,
-                    timestamp: new Date(msg.timestamp)
-                }));
-
-                // Load tools
-                const toolsResponse = await fetch(`/api/agents/${agentId}/tools`);
-                const toolsData = await toolsResponse.json();
-                appState.toolExecutions[agentId] = (toolsData.tools || []).map(tool => ({
-                    ...tool,
-                    timestamp: new Date(tool.timestamp || tool.started_at)
-                }));
-
-                if (agentId === appState.selectedAgentId) {
-                    renderChatMessages();
-                }
-            } catch (error) {
-                console.error(`Error loading data for agent ${agentId}:`, error);
-            }
-        }
-
-
-        // Initialize data (now via API)
+        // Initialize data
         async function initializeData() {
-            await loadInitialData();
+            // Check if we're in scan view or list view
+            handleHashChange();
+            if (appState.currentScanId) {
+                await loadScanData(appState.currentScanId);
+            } else {
+                await loadScans();
+            }
         }
 
         // Render agents tree
@@ -918,7 +1596,7 @@
             
             // Load agent data if not already loaded
             if (!appState.messages[agentId] || !appState.toolExecutions[agentId]) {
-                await loadAgentData(agentId);
+                await loadAgentData(appState.currentScanId, agentId);
             }
             
             renderChatMessages();
@@ -1197,7 +1875,11 @@
 
             // Send to API
             try {
-                const response = await fetch(`/api/agents/${appState.selectedAgentId}/message`, {
+                const endpoint = appState.currentScanId
+                    ? `/api/scans/${appState.currentScanId}/agents/${appState.selectedAgentId}/message`
+                    : `/api/agents/${appState.selectedAgentId}/message`;
+                
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1222,7 +1904,11 @@
             if (agent && agent.status === 'running') {
                 if (confirm(`Are you sure you want to stop the agent "${agent.name}"?`)) {
                     try {
-                        const response = await fetch(`/api/agents/${appState.selectedAgentId}/stop`, {
+                        const endpoint = appState.currentScanId
+                            ? `/api/scans/${appState.currentScanId}/agents/${appState.selectedAgentId}/stop`
+                            : `/api/agents/${appState.selectedAgentId}/stop`;
+                        
+                        const response = await fetch(endpoint, {
                             method: 'POST'
                         });
 
@@ -1281,17 +1967,27 @@
 
         // Initialization
         async function init() {
-            // Connect WebSocket first
-            connectWebSocket();
+            // Handle hash routing
+            window.addEventListener('hashchange', handleHashChange);
+            handleHashChange();
             
             // Load initial data
             await initializeData();
             
+            // Connect WebSocket after determining view
+            if (appState.currentScanId) {
+                connectWebSocket(appState.currentScanId);
+            } else {
+                connectWebSocket();
+            }
+            
             // Initial render
-            renderAgentsTree();
-            renderStats();
-            renderSeverityBreakdown();
-            renderVulnerabilities();
+            if (appState.currentScanId) {
+                renderAgentsTree();
+                renderStats();
+                renderSeverityBreakdown();
+                renderVulnerabilities();
+            }
         }
 
         // Start when DOM is ready

@@ -19,7 +19,7 @@ from rich.text import Text
 
 from strix.interface.cli import run_cli
 from strix.interface.tui import run_tui
-from strix.interface.web import run_web
+from strix.interface.web import run_server_only, run_web
 from strix.interface.utils import (
     assign_workspace_subdirs,
     build_final_stats_text,
@@ -280,10 +280,11 @@ Examples:
         "-t",
         "--target",
         type=str,
-        required=True,
+        required=False,
         action="append",
         help="Target to test (URL, repository, local directory path, domain name, or IP address). "
-        "Can be specified multiple times for multi-target scans.",
+        "Can be specified multiple times for multi-target scans. "
+        "Not required when using --server mode.",
     )
     parser.add_argument(
         "--instruction",
@@ -334,7 +335,34 @@ Examples:
         help="Host for web interface (default: 127.0.0.1).",
     )
 
+    parser.add_argument(
+        "--server",
+        action="store_true",
+        help="Run in server mode (starts web server without initial scan).",
+    )
+
     args = parser.parse_args()
+    
+    # If --server mode, target is not required
+    if args.server:
+        args.target = args.target or []
+        args.targets_info = []
+        # Process instruction file if provided
+        if args.instruction:
+            instruction_path = Path(args.instruction)
+            if instruction_path.exists() and instruction_path.is_file():
+                try:
+                    with instruction_path.open(encoding="utf-8") as f:
+                        args.instruction = f.read().strip()
+                        if not args.instruction:
+                            parser.error(f"Instruction file '{instruction_path}' is empty")
+                except Exception as e:  # noqa: BLE001
+                    parser.error(f"Failed to read instruction file '{instruction_path}': {e}")
+        return args
+
+    # Target is required for non-server mode
+    if not args.target:
+        parser.error("--target is required (unless using --server mode)")
 
     if args.instruction:
         instruction_path = Path(args.instruction)
@@ -484,6 +512,17 @@ def main() -> None:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     args = parse_arguments()
+
+    # Server mode: just start the web server
+    if args.server:
+        check_docker_installed()
+        validate_environment()
+        asyncio.run(warm_up_llm())
+        
+        web_host = getattr(args, "web_host", "127.0.0.1")
+        web_port = getattr(args, "web_port", 8080)
+        run_server_only(web_host, web_port)
+        return
 
     check_docker_installed()
     pull_docker_image()

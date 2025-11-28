@@ -25,6 +25,10 @@ install:
 	poetry install --only=main
 	pipx install . --force
 
+run-server:
+	poetry install
+	poetry run python -m strix.interface.main --server --web-port 8000
+
 dev-install:
 	poetry install --with=dev
 

@@ -13,14 +13,15 @@ from typing import Any
 
 import uvicorn
 from strix.agents.StrixAgent import StrixAgent
+from strix.interface.scan_manager import ScanManager
 from strix.interface.web_server import (
     app,
-    broadcast_agent_created,
-    broadcast_agent_updated,
-    broadcast_message,
-    broadcast_stats,
-    broadcast_tool_execution,
-    broadcast_vulnerability,
+    broadcast_agent_created_legacy,
+    broadcast_agent_updated_legacy,
+    broadcast_message_legacy,
+    broadcast_stats_legacy,
+    broadcast_tool_execution_legacy,
+    broadcast_vulnerability_legacy,
     setup_static_files,
 )
 from strix.llm.config import LLMConfig
@@ -161,7 +162,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
         original_log_agent_creation(agent_id, name, task, parent_id)
         agent_data = tracer.agents.get(agent_id, {})
         try:
-            broadcast_agent_created(agent_id, agent_data)
+            broadcast_agent_created_legacy(agent_id, agent_data)
         except Exception:
             pass  # Ignore errors in broadcasting
 
@@ -174,7 +175,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
         if error_message:
             updates["error_message"] = error_message
         try:
-            broadcast_agent_updated(agent_id, updates)
+            broadcast_agent_updated_legacy(agent_id, updates)
         except Exception:
             pass  # Ignore errors in broadcasting
 
@@ -194,7 +195,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
                 "metadata": metadata or {},
             }
             try:
-                broadcast_message(agent_id, message_data)
+                broadcast_message_legacy(agent_id, message_data)
             except Exception:
                 pass  # Ignore errors in broadcasting
         return message_id
@@ -211,7 +212,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
             "status": "running",
         }
         try:
-            broadcast_tool_execution(agent_id, tool_data)
+            broadcast_tool_execution_legacy(agent_id, tool_data)
         except Exception:
             pass  # Ignore errors in broadcasting
         return execution_id
@@ -232,7 +233,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
                     "result": result,
                 }
                 try:
-                    broadcast_tool_execution(agent_id, tool_data)
+                    broadcast_tool_execution_legacy(agent_id, tool_data)
                 except Exception:
                     pass  # Ignore errors in broadcasting
 
@@ -248,7 +249,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
             "severity": severity,
         }
         try:
-            broadcast_vulnerability(report_id, vuln_data)
+            broadcast_vulnerability_legacy(report_id, vuln_data)
         except Exception:
             pass  # Ignore errors in broadcasting
         return report_id
@@ -278,7 +279,7 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
                         "llm_stats": llm_stats.get("total", {}),
                     }
                     try:
-                        broadcast_stats(stats)
+                        broadcast_stats_legacy(stats)
                     except Exception:
                         pass  # Ignore errors in broadcasting
             except Exception as e:
@@ -286,4 +287,39 @@ def _setup_tracer_callbacks(tracer: Tracer) -> None:
 
     stats_thread = threading.Thread(target=update_stats_periodically, daemon=True)
     stats_thread.start()
+
+
+def run_server_only(web_host: str = "127.0.0.1", web_port: int = 8080) -> None:
+    """Run web server only without starting a scan."""
+    # Setup web assets path
+    web_assets_path = Path(__file__).parent / "web_assets"
+    
+    # If not found, try to find it in the installed package location
+    if not web_assets_path.exists():
+        spec = find_spec("strix.interface")
+        if spec and spec.origin:
+            interface_dir = Path(spec.origin).parent
+            candidate = interface_dir / "web_assets"
+            if candidate.exists():
+                web_assets_path = candidate
+    
+    setup_static_files(web_assets_path)
+
+    # Load existing scans from disk
+    scan_manager = ScanManager.get_instance()
+    scan_manager.load_scans_from_disk()
+    logger.info(f"Loaded {len(scan_manager.list_scans())} existing scan(s) from disk")
+
+    # Get web server configuration
+    logger.info(f"Web interface available at http://{web_host}:{web_port}")
+    logger.info("Server running. Use the web interface to create new scans.")
+
+    # Run server (this will block)
+    try:
+        uvicorn.run(app, host=web_host, port=web_port, log_level="info")
+    except KeyboardInterrupt:
+        logger.info("Shutting down web server...")
+    except Exception as e:
+        logger.exception(f"Error running web server: {e}")
+        raise
 
