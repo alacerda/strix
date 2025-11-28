@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Strix - Web GUI Proposal</title>
     <style>
-        /* Reset e Base */
+        /* Reset and Base */
         * {
             margin: 0;
             padding: 0;
@@ -51,7 +51,7 @@
             height: 100vh;
         }
 
-        /* Layout Principal */
+        /* Main Layout */
         .app-container {
             display: flex;
             height: 100vh;
@@ -59,7 +59,7 @@
             background: var(--border-color);
         }
 
-        /* Sidebar Esquerda - Agentes */
+        /* Left Sidebar - Agents */
         .sidebar-left {
             width: 300px;
             background: var(--bg-secondary);
@@ -128,7 +128,7 @@
             padding-left: 0.5rem;
         }
 
-        /* Painel Central */
+        /* Main Panel */
         .main-panel {
             flex: 1;
             display: flex;
@@ -351,7 +351,7 @@
             background: #b91c1c;
         }
 
-        /* Sidebar Direita */
+        /* Right Sidebar */
         .sidebar-right {
             width: 350px;
             background: var(--bg-secondary);
@@ -510,31 +510,31 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar Esquerda - Agentes -->
+        <!-- Left Sidebar - Agents -->
         <div class="sidebar-left">
             <div class="sidebar-header">
-                <h2>🤖 Agentes Ativos</h2>
+                <h2>🤖 Active Agents</h2>
             </div>
             <div class="agents-tree" id="agentsTree"></div>
         </div>
 
-        <!-- Painel Central -->
+        <!-- Main Panel -->
         <div class="main-panel">
             <div class="main-header">
                 <h1>🦉 Strix Cybersecurity Agent</h1>
                 <div class="agent-status-bar" id="agentStatusBar">
                     <div class="status-indicator">
-                        <span id="statusText">Selecione um agente</span>
+                        <span id="statusText">Select an agent</span>
                         <span class="status-dots" id="statusDots" style="display: none;"></span>
                     </div>
-                    <button class="stop-button" id="stopButton" style="display: none;">Parar Agente</button>
+                    <button class="stop-button" id="stopButton" style="display: none;">Stop Agent</button>
                 </div>
             </div>
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
                     <div class="empty-state">
                         <div class="empty-state-icon">🦉</div>
-                        <p>Selecione um agente da árvore para ver suas atividades</p>
+                        <p>Select an agent from the tree to view their activities</p>
                     </div>
                 </div>
                 <div class="chat-input-container">
@@ -543,29 +543,29 @@
                             type="text" 
                             class="chat-input" 
                             id="chatInput" 
-                            placeholder="Digite uma mensagem para o agente..."
+                            placeholder="Type a message for the agent..."
                             disabled
                         />
-                        <button class="send-button" id="sendButton" disabled>Enviar</button>
+                        <button class="send-button" id="sendButton" disabled>Send</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Sidebar Direita -->
+        <!-- Right Sidebar -->
         <div class="sidebar-right">
             <div class="stats-section">
-                <h3>📊 Estatísticas</h3>
+                <h3>📊 Statistics</h3>
                 <div class="stat-item">
-                    <span class="stat-label">Vulnerabilidades:</span>
+                    <span class="stat-label">Vulnerabilities:</span>
                     <span class="stat-value" id="vulnTotal">0</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Agentes:</span>
+                    <span class="stat-label">Agents:</span>
                     <span class="stat-value" id="agentCount">0</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Ferramentas:</span>
+                    <span class="stat-label">Tools:</span>
                     <span class="stat-value" id="toolCount">0</span>
                 </div>
                 <div class="stat-item">
@@ -581,25 +581,25 @@
                     <span class="stat-value" id="cachedTokens">0</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Custo Total:</span>
+                    <span class="stat-label">Total Cost:</span>
                     <span class="stat-value" id="totalCost">$0.0000</span>
                 </div>
             </div>
 
             <div class="stats-section">
-                <h3>🔍 Vulnerabilidades por Severidade</h3>
+                <h3>🔍 Vulnerabilities by Severity</h3>
                 <div id="severityBreakdown"></div>
             </div>
 
             <div class="vulnerabilities-list">
-                <h3 style="padding: 1rem; padding-bottom: 0.5rem; font-size: 1rem; color: var(--primary-green);">🐞 Vulnerabilidades Encontradas</h3>
+                <h3 style="padding: 1rem; padding-bottom: 0.5rem; font-size: 1rem; color: var(--primary-green);">🐞 Found Vulnerabilities</h3>
                 <div id="vulnerabilitiesList"></div>
             </div>
         </div>
     </div>
 
     <script>
-        // Estado da aplicação
+        // Application state
         const appState = {
             agents: {},
             selectedAgentId: null,
@@ -830,12 +830,12 @@
         }
 
 
-        // Inicializar dados (agora via API)
+        // Initialize data (now via API)
         async function initializeData() {
             await loadInitialData();
         }
 
-        // Renderizar árvore de agentes
+        // Render agents tree
         function renderAgentsTree() {
             const container = document.getElementById('agentsTree');
             container.innerHTML = '';
@@ -844,7 +844,7 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">🤖</div>
-                        <p>Aguardando agentes...</p>
+                        <p>Waiting for agents...</p>
                     </div>
                 `;
                 return;
@@ -881,7 +881,7 @@
                 selectAgent(agent.id);
             });
 
-            // Adicionar filhos
+            // Add children
             const children = Object.values(appState.agents).filter(a => a.parent_id === agent.id);
             if (children.length > 0) {
                 const childrenContainer = document.createElement('div');
@@ -911,7 +911,7 @@
             return icons[status] || '🔵';
         }
 
-        // Selecionar agente
+        // Select agent
         async function selectAgent(agentId) {
             appState.selectedAgentId = agentId;
             renderAgentsTree();
@@ -930,7 +930,7 @@
             sendButton.disabled = false;
         }
 
-        // Renderizar mensagens do chat
+        // Render chat messages
         function renderChatMessages() {
             const container = document.getElementById('chatMessages');
             container.innerHTML = '';
@@ -939,7 +939,7 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">🦉</div>
-                        <p>Selecione um agente da árvore para ver suas atividades</p>
+                        <p>Select an agent from the tree to view their activities</p>
                     </div>
                 `;
                 return;
@@ -951,7 +951,7 @@
             const messages = appState.messages[appState.selectedAgentId] || [];
             const tools = appState.toolExecutions[appState.selectedAgentId] || [];
 
-            // Combinar e ordenar por timestamp
+            // Combine and sort by timestamp
             const allEvents = [
                 ...messages.map(m => ({ type: 'message', data: m })),
                 ...tools.map(t => ({ type: 'tool', data: { ...t, toolName: t.tool_name || t.toolName } }))
@@ -980,7 +980,7 @@
             
             const time = formatTime(message.timestamp);
             div.innerHTML = `
-                <div class="message-header">${message.role === 'user' ? 'Você' : 'Agente'} • ${time}</div>
+                <div class="message-header">${message.role === 'user' ? 'You' : 'Agent'} • ${time}</div>
                 <div>${escapeHtml(message.content)}</div>
             `;
             
@@ -1050,7 +1050,7 @@
             return names[toolName] || toolName;
         }
 
-        // Atualizar barra de status do agente
+        // Update agent status bar
         function updateAgentStatusBar() {
             const statusBar = document.getElementById('agentStatusBar');
             const statusText = document.getElementById('statusText');
@@ -1058,7 +1058,7 @@
             const stopButton = document.getElementById('stopButton');
 
             if (!appState.selectedAgentId) {
-                statusText.textContent = 'Selecione um agente';
+                statusText.textContent = 'Select an agent';
                 statusDots.style.display = 'none';
                 stopButton.style.display = 'none';
                 return;
@@ -1073,18 +1073,18 @@
             let showStop = false;
 
             if (status === 'running') {
-                text = 'Executando...';
+                text = 'Running...';
                 showDots = true;
                 showStop = true;
             } else if (status === 'waiting') {
-                text = 'Aguardando';
+                text = 'Waiting';
                 showDots = true;
             } else if (status === 'completed') {
-                text = 'Concluído';
+                text = 'Completed';
             } else if (status === 'failed' || status === 'llm_failed') {
-                text = 'Falhou';
+                text = 'Failed';
             } else if (status === 'stopped') {
-                text = 'Parado';
+                text = 'Stopped';
             } else {
                 text = status;
             }
@@ -1094,7 +1094,7 @@
             stopButton.style.display = showStop ? 'block' : 'none';
         }
 
-        // Renderizar estatísticas
+        // Render statistics
         function renderStats() {
             document.getElementById('agentCount').textContent = appState.stats.agents;
             document.getElementById('toolCount').textContent = appState.stats.tools;
@@ -1105,7 +1105,7 @@
             document.getElementById('vulnTotal').textContent = appState.vulnerabilities.length;
         }
 
-        // Renderizar breakdown de severidade
+        // Render severity breakdown
         function renderSeverityBreakdown() {
             const container = document.getElementById('severityBreakdown');
             const counts = {
@@ -1134,11 +1134,11 @@
             });
 
             if (container.innerHTML === '') {
-                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">Nenhuma vulnerabilidade encontrada</div>';
+                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No vulnerabilities found</div>';
             }
         }
 
-        // Renderizar lista de vulnerabilidades
+        // Render vulnerabilities list
         function renderVulnerabilities() {
             const container = document.getElementById('vulnerabilitiesList');
             container.innerHTML = '';
@@ -1147,7 +1147,7 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">✅</div>
-                        <p>Nenhuma vulnerabilidade encontrada ainda</p>
+                        <p>No vulnerabilities found yet</p>
                     </div>
                 `;
                 return;
@@ -1167,14 +1167,14 @@
                 `;
 
                 card.addEventListener('click', () => {
-                    alert(`Vulnerabilidade: ${vuln.title}\n\n${vuln.content}`);
+                    alert(`Vulnerability: ${vuln.title}\n\n${vuln.content}`);
                 });
 
                 container.appendChild(card);
             });
         }
 
-        // Enviar mensagem
+        // Send message
         async function sendMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
@@ -1210,17 +1210,17 @@
                 }
             } catch (error) {
                 console.error('Error sending message:', error);
-                alert('Erro ao enviar mensagem. Tente novamente.');
+                alert('Error sending message. Please try again.');
             }
         }
 
-        // Parar agente
+        // Stop agent
         async function stopAgent() {
             if (!appState.selectedAgentId) return;
             
             const agent = appState.agents[appState.selectedAgentId];
             if (agent && agent.status === 'running') {
-                if (confirm(`Tem certeza que deseja parar o agente "${agent.name}"?`)) {
+                if (confirm(`Are you sure you want to stop the agent "${agent.name}"?`)) {
                     try {
                         const response = await fetch(`/api/agents/${appState.selectedAgentId}/stop`, {
                             method: 'POST'
@@ -1238,18 +1238,18 @@
                         }
                     } catch (error) {
                         console.error('Error stopping agent:', error);
-                        alert('Erro ao parar agente. Tente novamente.');
+                        alert('Error stopping agent. Please try again.');
                     }
                 }
             }
         }
 
-        // Utilitários
+        // Utilities
         function formatTime(date) {
             if (!(date instanceof Date)) {
                 date = new Date(date);
             }
-            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         }
 
         function formatNumber(num) {
@@ -1279,7 +1279,7 @@
         });
         document.getElementById('stopButton').addEventListener('click', stopAgent);
 
-        // Inicialização
+        // Initialization
         async function init() {
             // Connect WebSocket first
             connectWebSocket();
@@ -1294,7 +1294,7 @@
             renderVulnerabilities();
         }
 
-        // Iniciar quando o DOM estiver pronto
+        // Start when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
