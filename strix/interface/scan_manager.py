@@ -40,9 +40,32 @@ class ScanInfo:
         self.end_time: Optional[str] = None
         self.error: Optional[str] = None
 
+    def _get_docker_info(self) -> dict[str, Any]:
+        """Get Docker container information for this scan."""
+        try:
+            from strix.runtime.docker_runtime import DockerRuntime
+            
+            docker_runtime = DockerRuntime()
+            return docker_runtime.get_scan_container_info(self.scan_id)
+        except Exception as e:
+            logger.debug(f"Failed to get Docker info for scan {self.scan_id}: {e}")
+            return {
+                "container_id": None,
+                "container_name": None,
+                "container_status": None,
+            }
+
     def to_dict(self) -> dict[str, Any]:
         """Convert scan info to dictionary."""
-        return {
+        docker_info = self._get_docker_info()
+        
+        total_agents = len(self.tracer.agents) if self.tracer else 0
+        running_agents = sum(
+            1 for agent in (self.tracer.agents.values() if self.tracer else [])
+            if agent.get("status") == "running"
+        )
+        
+        result = {
             "scan_id": self.scan_id,
             "run_name": self.scan_config.get("run_name", self.scan_id),
             "status": self.status,
@@ -51,7 +74,14 @@ class ScanInfo:
             "targets": self.scan_config.get("targets", []),
             "user_instructions": self.scan_config.get("user_instructions", ""),
             "error": self.error,
+            "container_id": docker_info["container_id"],
+            "container_name": docker_info["container_name"],
+            "container_status": docker_info["container_status"],
+            "total_agents_count": total_agents,
+            "running_agents_count": running_agents,
         }
+        
+        return result
 
     def save_metadata(self) -> None:
         """Save scan metadata to disk."""
@@ -157,6 +187,12 @@ class ScanManager:
         scan_info.start_time = datetime.now(UTC).isoformat()
         scan_info.save_metadata()
 
+        try:
+            from strix.interface.web_server import broadcast_status_message
+            broadcast_status_message(scan_id, "Scan started. Setting up monitoring...")
+        except Exception:
+            pass
+
         # Setup periodic stats updates for this scan
         def update_stats_periodically() -> None:
             import time
@@ -190,6 +226,7 @@ class ScanManager:
             broadcast_agent_updated,
             broadcast_message,
             broadcast_stats,
+            broadcast_status_message,
             broadcast_tool_execution,
             broadcast_vulnerability,
         )
@@ -210,6 +247,10 @@ class ScanManager:
             agent_data = scan_info.tracer.agents.get(agent_id, {})
             try:
                 broadcast_agent_created(scan_id, agent_id, agent_data)
+                if len(scan_info.tracer.agents) == 1:
+                    broadcast_status_message(scan_id, f"Agent '{name}' created and ready.")
+                else:
+                    broadcast_status_message(scan_id, f"Agent '{name}' created.")
             except Exception:
                 pass
 
@@ -304,8 +345,15 @@ class ScanManager:
         scan_info.tracer.update_tool_execution = wrapped_update_tool_execution
         scan_info.tracer.add_vulnerability_report = wrapped_add_vulnerability_report
 
+        try:
+            broadcast_status_message(scan_id, "Monitoring configured. Starting agent execution...")
+        except Exception:
+            pass
+
         # Start scan in background task
         async def run_scan():
+            previous_tracer = get_global_tracer()
+            set_global_tracer(scan_info.tracer)
             try:
                 try:
                     from strix.interface.web_server import broadcast_status_message
@@ -325,6 +373,8 @@ class ScanManager:
                 scan_info.end_time = datetime.now(UTC).isoformat()
                 logger.exception(f"Scan {scan_id} failed: {e}")
             finally:
+                if previous_tracer is not None:
+                    set_global_tracer(previous_tracer)
                 scan_info.tracer.cleanup()
                 scan_info.save_metadata()
                 # Broadcast scan updated event (thread-safe via queue)

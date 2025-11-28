@@ -5,7 +5,7 @@ import secrets
 import socket
 import time
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
@@ -26,9 +26,9 @@ class DockerRuntime(AbstractRuntime):
             logger.exception("Failed to connect to Docker daemon")
             raise RuntimeError("Docker is not available or not configured correctly.") from e
 
-        self._scan_container: Container | None = None
-        self._tool_server_port: int | None = None
-        self._tool_server_token: str | None = None
+        self._scan_containers: dict[str, Container] = {}
+        self._tool_server_ports: dict[str, int] = {}
+        self._tool_server_tokens: dict[str, str] = {}
 
     def _generate_sandbox_token(self) -> str:
         return secrets.token_urlsafe(32)
@@ -38,7 +38,10 @@ class DockerRuntime(AbstractRuntime):
             s.bind(("", 0))
             return cast("int", s.getsockname()[1])
 
-    def _get_scan_id(self, agent_id: str) -> str:
+    def _get_scan_id(self, agent_id: str, scan_id: str | None = None) -> str:
+        if scan_id:
+            return scan_id
+        
         try:
             from strix.telemetry.tracer import get_global_tracer
 
@@ -101,8 +104,8 @@ class DockerRuntime(AbstractRuntime):
                 tool_server_port = self._find_available_port()
                 tool_server_token = self._generate_sandbox_token()
 
-                self._tool_server_port = tool_server_port
-                self._tool_server_token = tool_server_token
+                self._tool_server_ports[scan_id] = tool_server_port
+                self._tool_server_tokens[scan_id] = tool_server_token
 
                 container = self.client.containers.run(
                     STRIX_IMAGE,
@@ -125,7 +128,7 @@ class DockerRuntime(AbstractRuntime):
                     tty=True,
                 )
 
-                self._scan_container = container
+                self._scan_containers[scan_id] = container
                 logger.info("Created container %s for scan %s", container.id, scan_id)
                 try:
                     from strix.interface.web_server import broadcast_status_message
@@ -144,8 +147,10 @@ class DockerRuntime(AbstractRuntime):
 
                 logger.warning(f"Container creation attempt {attempt + 1}/{max_retries} failed")
 
-                self._tool_server_port = None
-                self._tool_server_token = None
+                if scan_id in self._tool_server_ports:
+                    del self._tool_server_ports[scan_id]
+                if scan_id in self._tool_server_tokens:
+                    del self._tool_server_tokens[scan_id]
 
                 sleep_time = (2**attempt) + (0.1 * attempt)
                 time.sleep(sleep_time)
@@ -159,42 +164,62 @@ class DockerRuntime(AbstractRuntime):
     def _get_or_create_scan_container(self, scan_id: str) -> Container:  # noqa: PLR0912
         container_name = f"strix-scan-{scan_id}"
 
-        if self._scan_container:
+        if scan_id in self._scan_containers:
             try:
-                self._scan_container.reload()
-                if self._scan_container.status == "running":
-                    return self._scan_container
+                container = self._scan_containers[scan_id]
+                container.reload()
+                container_labels = container.labels or {}
+                container_scan_id = container_labels.get("strix-scan-id")
+                
+                if container_scan_id == scan_id and container.status == "running":
+                    return container
+                else:
+                    if container_scan_id != scan_id:
+                        logger.debug(
+                            f"Container {container.name} belongs to scan {container_scan_id}, "
+                            f"not {scan_id}. Creating new container."
+                        )
+                    del self._scan_containers[scan_id]
+                    if scan_id in self._tool_server_ports:
+                        del self._tool_server_ports[scan_id]
+                    if scan_id in self._tool_server_tokens:
+                        del self._tool_server_tokens[scan_id]
             except NotFound:
-                self._scan_container = None
-                self._tool_server_port = None
-                self._tool_server_token = None
+                if scan_id in self._scan_containers:
+                    del self._scan_containers[scan_id]
+                if scan_id in self._tool_server_ports:
+                    del self._tool_server_ports[scan_id]
+                if scan_id in self._tool_server_tokens:
+                    del self._tool_server_tokens[scan_id]
 
         try:
             container = self.client.containers.get(container_name)
             container.reload()
 
-            if (
-                "strix-scan-id" not in container.labels
-                or container.labels["strix-scan-id"] != scan_id
-            ):
+            container_labels = container.labels or {}
+            container_scan_id = container_labels.get("strix-scan-id")
+            
+            if container_scan_id != scan_id:
                 logger.warning(
-                    f"Container {container_name} exists but missing/wrong label, updating"
+                    f"Container {container_name} exists but belongs to scan {container_scan_id}, "
+                    f"not {scan_id}. Will create new container."
                 )
+                raise NotFound(f"Container belongs to different scan")
 
             if container.status != "running":
                 logger.info(f"Starting existing container {container_name}")
                 container.start()
                 time.sleep(2)
 
-            self._scan_container = container
+            self._scan_containers[scan_id] = container
 
             for env_var in container.attrs["Config"]["Env"]:
                 if env_var.startswith("TOOL_SERVER_PORT="):
-                    self._tool_server_port = int(env_var.split("=")[1])
+                    self._tool_server_ports[scan_id] = int(env_var.split("=")[1])
                 elif env_var.startswith("TOOL_SERVER_TOKEN="):
-                    self._tool_server_token = env_var.split("=")[1]
+                    self._tool_server_tokens[scan_id] = env_var.split("=")[1]
 
-            logger.info(f"Reusing existing container {container_name}")
+            logger.info(f"Reusing existing container {container_name} for scan {scan_id}")
 
         except NotFound:
             pass
@@ -212,13 +237,13 @@ class DockerRuntime(AbstractRuntime):
                 if container.status != "running":
                     container.start()
                     time.sleep(2)
-                self._scan_container = container
+                self._scan_containers[scan_id] = container
 
                 for env_var in container.attrs["Config"]["Env"]:
                     if env_var.startswith("TOOL_SERVER_PORT="):
-                        self._tool_server_port = int(env_var.split("=")[1])
+                        self._tool_server_ports[scan_id] = int(env_var.split("=")[1])
                     elif env_var.startswith("TOOL_SERVER_TOKEN="):
-                        self._tool_server_token = env_var.split("=")[1]
+                        self._tool_server_tokens[scan_id] = env_var.split("=")[1]
 
                 logger.info(f"Found existing container by label for scan {scan_id}")
                 return container
@@ -311,8 +336,9 @@ class DockerRuntime(AbstractRuntime):
         agent_id: str,
         existing_token: str | None = None,
         local_sources: list[dict[str, str]] | None = None,
+        scan_id: str | None = None,
     ) -> SandboxInfo:
-        scan_id = self._get_scan_id(agent_id)
+        scan_id = scan_id or self._get_scan_id(agent_id)
         container = self._get_or_create_scan_container(scan_id)
 
         source_copied_key = f"_source_copied_{scan_id}"
@@ -333,12 +359,15 @@ class DockerRuntime(AbstractRuntime):
         if container_id is None:
             raise RuntimeError("Docker container ID is unexpectedly None")
 
-        token = existing_token if existing_token is not None else self._tool_server_token
+        tool_server_port = self._tool_server_ports.get(scan_id)
+        tool_server_token = self._tool_server_tokens.get(scan_id)
+        
+        token = existing_token if existing_token is not None else tool_server_token
 
-        if self._tool_server_port is None or token is None:
+        if tool_server_port is None or token is None:
             raise RuntimeError("Tool server not initialized or no token available")
 
-        api_url = await self.get_sandbox_url(container_id, self._tool_server_port)
+        api_url = await self.get_sandbox_url(container_id, tool_server_port)
 
         await self._register_agent_with_tool_server(api_url, agent_id, token)
 
@@ -346,7 +375,7 @@ class DockerRuntime(AbstractRuntime):
             "workspace_id": container_id,
             "api_url": api_url,
             "auth_token": token,
-            "tool_server_port": self._tool_server_port,
+            "tool_server_port": tool_server_port,
             "agent_id": agent_id,
         }
 
@@ -400,13 +429,20 @@ class DockerRuntime(AbstractRuntime):
         logger.info("Destroying scan container %s", container_id)
         try:
             container = self.client.containers.get(container_id)
+            container_labels = container.labels or {}
+            scan_id = container_labels.get("strix-scan-id")
+            
             container.stop()
             container.remove()
             logger.info("Successfully destroyed container %s", container_id)
 
-            self._scan_container = None
-            self._tool_server_port = None
-            self._tool_server_token = None
+            if scan_id:
+                if scan_id in self._scan_containers:
+                    del self._scan_containers[scan_id]
+                if scan_id in self._tool_server_ports:
+                    del self._tool_server_ports[scan_id]
+                if scan_id in self._tool_server_tokens:
+                    del self._tool_server_tokens[scan_id]
 
         except NotFound:
             logger.warning("Container %s not found for destruction.", container_id)
@@ -527,12 +563,15 @@ class DockerRuntime(AbstractRuntime):
                 removed_count += 1
                 logger.info(f"Successfully removed container {container_name_found} (id: {container_id_str})")
                 
-                # Clear instance state if this was the active container
-                if self._scan_container and self._scan_container.id == container_id_str:
-                    logger.debug("Clearing instance state for removed container")
-                    self._scan_container = None
-                    self._tool_server_port = None
-                    self._tool_server_token = None
+                # Clear instance state for this scan
+                if scan_id in self._scan_containers:
+                    if self._scan_containers[scan_id].id == container_id_str:
+                        logger.debug("Clearing instance state for removed container")
+                        del self._scan_containers[scan_id]
+                if scan_id in self._tool_server_ports:
+                    del self._tool_server_ports[scan_id]
+                if scan_id in self._tool_server_tokens:
+                    del self._tool_server_tokens[scan_id]
                     
             except NotFound:
                 logger.debug(f"Container {container.name} already removed (not found)")
@@ -548,3 +587,45 @@ class DockerRuntime(AbstractRuntime):
                 f"found {len(containers_to_remove)} container(s), "
                 f"removed {removed_count} container(s)"
             )
+
+    def get_scan_container_info(self, scan_id: str) -> dict[str, Any]:
+        """Get Docker container information for a scan.
+        
+        Returns:
+            Dictionary with container_id, container_name, and container_status.
+            All values will be None if container is not found.
+        """
+        container_info = {
+            "container_id": None,
+            "container_name": None,
+            "container_status": None,
+        }
+        
+        try:
+            container_name = f"strix-scan-{scan_id}"
+            
+            try:
+                container = self.client.containers.get(container_name)
+                container.reload()
+                container_info["container_id"] = container.id
+                container_info["container_name"] = container.name
+                container_info["container_status"] = container.status
+            except NotFound:
+                try:
+                    containers = self.client.containers.list(
+                        all=True, filters={"label": f"strix-scan-id={scan_id}"}
+                    )
+                    if containers:
+                        container = containers[0]
+                        container.reload()
+                        container_info["container_id"] = container.id
+                        container_info["container_name"] = container.name
+                        container_info["container_status"] = container.status
+                except (NotFound, DockerException):
+                    pass
+            except DockerException:
+                pass
+        except Exception as e:
+            logger.debug(f"Failed to get container info for scan {scan_id}: {e}")
+        
+        return container_info

@@ -333,10 +333,19 @@ class BaseAgent(metaclass=AgentMeta):
         sandbox_mode = os.getenv("STRIX_SANDBOX_MODE", "false").lower() == "true"
         if not sandbox_mode and self.state.sandbox_id is None:
             from strix.runtime import get_runtime
+            from strix.telemetry.tracer import get_global_tracer
+
+            scan_id = None
+            try:
+                tracer = get_global_tracer()
+                if tracer and tracer.scan_config:
+                    scan_id = tracer.scan_config.get("scan_id")
+            except (ImportError, AttributeError):
+                pass
 
             runtime = get_runtime()
             sandbox_info = await runtime.create_sandbox(
-                self.state.agent_id, self.state.sandbox_token, self.local_sources
+                self.state.agent_id, self.state.sandbox_token, self.local_sources, scan_id
             )
             self.state.sandbox_id = sandbox_info["workspace_id"]
             self.state.sandbox_token = sandbox_info["auth_token"]

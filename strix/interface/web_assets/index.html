@@ -700,6 +700,64 @@
             transform: scale(0.95);
         }
 
+        .scan-card-info-item {
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .scan-card-info-label {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.8rem;
+        }
+
+        .scan-card-info-value {
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .scan-card-monospace {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: var(--primary-green);
+        }
+
+        .scan-card-container-status {
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .scan-card-container-status-running {
+            background: var(--success);
+            color: white;
+        }
+
+        .scan-card-container-status-exited,
+        .scan-card-container-status-stopped {
+            background: var(--warning);
+            color: white;
+        }
+
+        .scan-card-container-status-created,
+        .scan-card-container-status-restarting {
+            background: var(--info);
+            color: white;
+        }
+
+        .scan-card-container-status-paused {
+            background: var(--text-muted);
+            color: white;
+        }
+
         /* Create Scan Modal */
         .modal-overlay {
             display: none;
@@ -1291,6 +1349,23 @@
             window.location.hash = `scan/${scanId}`;
             document.getElementById('scansListView').classList.remove('active');
             document.getElementById('scanView').classList.add('active');
+            
+            if (appState.currentScanId !== scanId) {
+                appState.agents = {};
+                appState.messages = {};
+                appState.toolExecutions = {};
+                appState.vulnerabilities = [];
+                appState.selectedAgentId = null;
+                appState.stats = {
+                    agents: 0,
+                    tools: 0,
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    cost: 0
+                };
+            }
+            
             appState.currentScanId = scanId;
             document.getElementById('scanIdDisplay').textContent = scanId;
             loadScanData(scanId);
@@ -1416,14 +1491,73 @@
                 info.className = 'scan-card-info';
                 
                 const started = document.createElement('div');
-                started.textContent = `Started: ${new Date(scan.start_time).toLocaleString()}`;
+                started.className = 'scan-card-info-item';
+                started.textContent = `Iniciado: ${new Date(scan.start_time).toLocaleString('pt-BR')}`;
                 info.appendChild(started);
                 
                 if (scan.end_time) {
                     const ended = document.createElement('div');
-                    ended.textContent = `Ended: ${new Date(scan.end_time).toLocaleString()}`;
+                    ended.className = 'scan-card-info-item';
+                    ended.textContent = `Finalizado: ${new Date(scan.end_time).toLocaleString('pt-BR')}`;
                     info.appendChild(ended);
                 }
+                
+                if (scan.container_id) {
+                    const containerIdDiv = document.createElement('div');
+                    containerIdDiv.className = 'scan-card-info-item';
+                    const containerIdLabel = document.createElement('span');
+                    containerIdLabel.className = 'scan-card-info-label';
+                    containerIdLabel.textContent = 'Container ID: ';
+                    const containerIdValue = document.createElement('span');
+                    containerIdValue.className = 'scan-card-info-value scan-card-monospace';
+                    containerIdValue.textContent = scan.container_id.substring(0, 12);
+                    containerIdValue.title = scan.container_id;
+                    containerIdDiv.appendChild(containerIdLabel);
+                    containerIdDiv.appendChild(containerIdValue);
+                    info.appendChild(containerIdDiv);
+                }
+                
+                if (scan.container_name) {
+                    const containerNameDiv = document.createElement('div');
+                    containerNameDiv.className = 'scan-card-info-item';
+                    const containerNameLabel = document.createElement('span');
+                    containerNameLabel.className = 'scan-card-info-label';
+                    containerNameLabel.textContent = 'Container: ';
+                    const containerNameValue = document.createElement('span');
+                    containerNameValue.className = 'scan-card-info-value';
+                    containerNameValue.textContent = scan.container_name;
+                    containerNameDiv.appendChild(containerNameLabel);
+                    containerNameDiv.appendChild(containerNameValue);
+                    info.appendChild(containerNameDiv);
+                }
+                
+                if (scan.container_status) {
+                    const containerStatusDiv = document.createElement('div');
+                    containerStatusDiv.className = 'scan-card-info-item';
+                    const containerStatusLabel = document.createElement('span');
+                    containerStatusLabel.className = 'scan-card-info-label';
+                    containerStatusLabel.textContent = 'Status Container: ';
+                    const containerStatusValue = document.createElement('span');
+                    containerStatusValue.className = `scan-card-container-status scan-card-container-status-${scan.container_status}`;
+                    containerStatusValue.textContent = scan.container_status;
+                    containerStatusDiv.appendChild(containerStatusLabel);
+                    containerStatusDiv.appendChild(containerStatusValue);
+                    info.appendChild(containerStatusDiv);
+                }
+                
+                const agentsInfoDiv = document.createElement('div');
+                agentsInfoDiv.className = 'scan-card-info-item';
+                const agentsLabel = document.createElement('span');
+                agentsLabel.className = 'scan-card-info-label';
+                agentsLabel.textContent = 'Agentes: ';
+                const agentsValue = document.createElement('span');
+                agentsValue.className = 'scan-card-info-value';
+                const totalAgents = scan.total_agents_count || 0;
+                const runningAgents = scan.running_agents_count || 0;
+                agentsValue.textContent = `${runningAgents} em execução / ${totalAgents} total`;
+                agentsInfoDiv.appendChild(agentsLabel);
+                agentsInfoDiv.appendChild(agentsValue);
+                info.appendChild(agentsInfoDiv);
                 
                 const targetsDiv = document.createElement('div');
                 targetsDiv.className = 'scan-card-targets';
@@ -1526,6 +1660,15 @@
                 const data = await response.json();
                 document.getElementById('createScanModal').classList.remove('active');
                 e.target.reset();
+                
+                // Subscribe to scan_id immediately before showing view
+                if (appState.ws && appState.wsConnected) {
+                    appState.ws.send(JSON.stringify({
+                        type: 'subscribe',
+                        scan_ids: [data.scan_id]
+                    }));
+                }
+                
                 showScanView(data.scan_id);
             } catch (error) {
                 console.error('Error creating scan:', error);
@@ -1536,6 +1679,14 @@
         // Load scan data
         async function loadScanData(scanId) {
             if (!scanId) return;
+            
+            if (appState.currentScanId !== scanId) {
+                appState.agents = {};
+                appState.messages = {};
+                appState.toolExecutions = {};
+                appState.vulnerabilities = [];
+                appState.selectedAgentId = null;
+            }
 
             // Subscribe to this scan's WebSocket events
             if (appState.ws && appState.wsConnected) {
@@ -1666,8 +1817,11 @@
         }
 
         function handleWebSocketMessage(message) {
-            // Filter by scan_id if we're viewing a specific scan
-            if (appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
+            // For status messages, be more lenient - accept messages for current scan or pending scan
+            const isStatusMessage = message.type === 'status_message';
+            
+            // Filter by scan_id if we're viewing a specific scan (except for status messages)
+            if (!isStatusMessage && appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
                 return; // Ignore events from other scans
             }
 
@@ -1680,16 +1834,17 @@
                             renderScansList();
                         }
                     }
-                    if (message.data.agents) {
+                    // Only update agents, vulnerabilities, and stats if scan_id matches or we're in list view
+                    if (message.data.agents && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
                         appState.agents = message.data.agents;
                         renderAgentsTree();
                     }
-                    if (message.data.vulnerabilities) {
+                    if (message.data.vulnerabilities && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
                         appState.vulnerabilities = message.data.vulnerabilities;
                         renderVulnerabilities();
                         renderSeverityBreakdown();
                     }
-                    if (message.data.stats) {
+                    if (message.data.stats && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
                         updateStatsFromData(message.data.stats);
                     }
                     break;
@@ -1718,7 +1873,7 @@
                     }
                     break;
                 case 'agent_created':
-                    if (message.data.agent_id) {
+                    if (message.data.agent_id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         const agentId = message.data.agent_id;
                         // Add agent to state
                         appState.agents[agentId] = {
@@ -1731,7 +1886,9 @@
                         };
                         renderAgentsTree();
                         // Load agent data asynchronously
-                        loadAgentData(appState.currentScanId, agentId);
+                        if (appState.currentScanId) {
+                            loadAgentData(appState.currentScanId, agentId);
+                        }
                     }
                     break;
                 case 'agent_updated':
@@ -1821,7 +1978,13 @@
                         message: message.data.message,
                         timestamp: new Date((message.data.timestamp || Date.now() / 1000) * 1000)
                     });
-                    if (statusScanId === appState.currentScanId || (!message.scan_id && appState.currentScanId)) {
+                    // Show status message if:
+                    // 1. It's for the current scan, OR
+                    // 2. It's a global message (no scan_id) and we have a current scan, OR
+                    // 3. We're about to view this scan (scan_id matches but currentScanId not set yet)
+                    if (statusScanId === appState.currentScanId || 
+                        (!message.scan_id && appState.currentScanId) ||
+                        (message.scan_id && !appState.currentScanId && window.location.hash.includes(message.scan_id))) {
                         renderChatMessages();
                     }
                     break;
