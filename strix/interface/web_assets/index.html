@@ -1737,13 +1737,23 @@
                         if (!appState.messages[agentId]) {
                             appState.messages[agentId] = [];
                         }
-                        appState.messages[agentId].push({
-                            role: message.data.role,
-                            content: message.data.content,
-                            timestamp: new Date(message.data.timestamp || Date.now())
-                        });
-                        if (agentId === appState.selectedAgentId) {
-                            renderChatMessages();
+                        // Check if message already exists (by message_id or content+timestamp)
+                        const messageId = message.data.message_id;
+                        const existingIndex = appState.messages[agentId].findIndex(
+                            m => (m.message_id && m.message_id === messageId) ||
+                                 (m.content === message.data.content && 
+                                  Math.abs(new Date(m.timestamp) - new Date(message.data.timestamp || Date.now())) < 1000)
+                        );
+                        if (existingIndex === -1) {
+                            appState.messages[agentId].push({
+                                role: message.data.role,
+                                content: message.data.content,
+                                message_id: messageId,
+                                timestamp: new Date(message.data.timestamp || Date.now())
+                            });
+                            if (agentId === appState.selectedAgentId) {
+                                renderChatMessages();
+                            }
                         }
                     }
                     break;
@@ -2304,21 +2314,10 @@
             
             if (!message || !appState.selectedAgentId) return;
 
-            // Add message to UI immediately
-            if (!appState.messages[appState.selectedAgentId]) {
-                appState.messages[appState.selectedAgentId] = [];
-            }
-
-            appState.messages[appState.selectedAgentId].push({
-                role: 'user',
-                content: message,
-                timestamp: new Date()
-            });
-
+            // Clear input immediately for better UX
             input.value = '';
-            renderChatMessages();
 
-            // Send to API
+            // Send to API - the message will be added to UI via WebSocket
             try {
                 const endpoint = appState.currentScanId
                     ? `/api/scans/${appState.currentScanId}/agents/${appState.selectedAgentId}/message`

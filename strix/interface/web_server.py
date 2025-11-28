@@ -434,6 +434,8 @@ async def send_scan_agent_message(
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     # Log the message
+    # Note: The broadcast is handled automatically by the tracer callback
+    # (wrapped_log_chat_message in scan_manager.py), so we don't need to broadcast here
     message_id = scan_info.tracer.log_chat_message(
         content=request.content,
         role="user",
@@ -448,18 +450,6 @@ async def send_scan_agent_message(
     except (ImportError, AttributeError) as e:
         logger.warning(f"Failed to send message to agent {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
-
-    # Broadcast via WebSocket
-    await websocket_manager.broadcast(
-        "message",
-        {
-            "agent_id": agent_id,
-            "message_id": message_id,
-            "role": "user",
-            "content": request.content,
-        },
-        scan_id,
-    )
 
     return {"success": True, "message_id": message_id}
 
@@ -598,6 +588,8 @@ async def send_agent_message(agent_id: str, request: MessageRequest) -> dict[str
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     # Log the message
+    # Note: The broadcast is handled automatically by the tracer callback
+    # (wrapped_log_chat_message in web.py), so we don't need to broadcast here
     message_id = tracer.log_chat_message(
         content=request.content,
         role="user",
@@ -612,17 +604,6 @@ async def send_agent_message(agent_id: str, request: MessageRequest) -> dict[str
     except (ImportError, AttributeError) as e:
         logger.warning(f"Failed to send message to agent {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
-
-    # Broadcast via WebSocket
-    await websocket_manager.broadcast(
-        "message",
-        {
-            "agent_id": agent_id,
-            "message_id": message_id,
-            "role": "user",
-            "content": request.content,
-        },
-    )
 
     return {"success": True, "message_id": message_id}
 
