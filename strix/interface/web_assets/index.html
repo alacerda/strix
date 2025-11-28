@@ -1159,6 +1159,35 @@
                 right: -100vw;
             }
         }
+
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 300px;
+            gap: 1.5rem;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--bg-tertiary);
+            border-top: 4px solid var(--primary-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -1661,15 +1690,27 @@
                 document.getElementById('createScanModal').classList.remove('active');
                 e.target.reset();
                 
-                // Subscribe to scan_id immediately before showing view
+                const scanId = data.scan_id;
+                
+                const existingIndex = appState.scans.findIndex(s => s.scan_id === scanId);
+                if (existingIndex >= 0) {
+                    appState.scans[existingIndex] = data;
+                } else {
+                    appState.scans.push(data);
+                }
+                
+                if (document.getElementById('scansListView').classList.contains('active')) {
+                    renderScansList();
+                }
+                
                 if (appState.ws && appState.wsConnected) {
                     appState.ws.send(JSON.stringify({
                         type: 'subscribe',
-                        scan_ids: [data.scan_id]
+                        scan_ids: [scanId]
                     }));
                 }
                 
-                showScanView(data.scan_id);
+                showScanView(scanId);
             } catch (error) {
                 console.error('Error creating scan:', error);
                 alert(`Error creating scan: ${error.message}`);
@@ -1850,9 +1891,20 @@
                     break;
                 case 'scan_created':
                 case 'scan_updated':
-                    // Reload scans list
-                    loadScans();
-                    // If this is the current scan, reload its data
+                    if (message.data && message.scan_id) {
+                        const scanData = message.data;
+                        const existingIndex = appState.scans.findIndex(s => s.scan_id === message.scan_id);
+                        if (existingIndex >= 0) {
+                            appState.scans[existingIndex] = scanData;
+                        } else {
+                            appState.scans.push(scanData);
+                        }
+                        
+                        if (document.getElementById('scansListView').classList.contains('active')) {
+                            renderScansList();
+                        }
+                    }
+                    
                     if (message.scan_id === appState.currentScanId) {
                         loadScanData(appState.currentScanId);
                     }
@@ -1885,6 +1937,7 @@
                             ...message.data
                         };
                         renderAgentsTree();
+                        renderChatMessages();
                         // Load agent data asynchronously
                         if (appState.currentScanId) {
                             loadAgentData(appState.currentScanId, agentId);
@@ -2170,6 +2223,25 @@
             container.textContent = ''; // Clear safely
 
             if (!appState.selectedAgentId) {
+                const hasAgents = Object.keys(appState.agents).length > 0;
+                
+                if (!hasAgents) {
+                    const loadingContainer = document.createElement('div');
+                    loadingContainer.className = 'loading-container';
+                    
+                    const spinner = document.createElement('div');
+                    spinner.className = 'loading-spinner';
+                    
+                    const text = document.createElement('div');
+                    text.className = 'loading-text';
+                    text.textContent = 'Initializing scan...';
+                    
+                    loadingContainer.appendChild(spinner);
+                    loadingContainer.appendChild(text);
+                    container.appendChild(loadingContainer);
+                    return;
+                }
+                
                 const statusMessages = appState.statusMessages[appState.currentScanId] || [];
                 if (statusMessages.length > 0) {
                     statusMessages.forEach(statusMsg => {

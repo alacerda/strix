@@ -268,7 +268,6 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
 
     broadcast_status_message(scan_id, "Scan created. Initializing agents...")
     
-    # Broadcast scan created event immediately so frontend can subscribe
     scan_info = scan_manager.get_scan(scan_id)
     if scan_info:
         await websocket_manager.broadcast(
@@ -279,9 +278,11 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
 
     broadcast_status_message(scan_id, "Starting container...")
 
-    # Start scan in background
-    await scan_manager.start_scan(scan_id)
+    asyncio.create_task(scan_manager.start_scan(scan_id))
 
+    scan_info = scan_manager.get_scan(scan_id)
+    if scan_info:
+        return scan_info.to_dict()
     return {"scan_id": scan_id, "status": "created"}
 
 
