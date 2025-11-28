@@ -860,10 +860,216 @@
             background: var(--border-color);
         }
 
+        /* Vulnerability Drawer */
+        .drawer-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .drawer-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .vulnerability-drawer {
+            position: fixed;
+            top: 0;
+            right: -600px;
+            width: 600px;
+            max-width: 90vw;
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
+            z-index: 2001;
+            display: flex;
+            flex-direction: column;
+            transition: right 0.3s ease;
+            box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .vulnerability-drawer.active {
+            right: 0;
+        }
+
+        .drawer-header {
+            padding: 1.5rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .drawer-header-content {
+            flex: 1;
+        }
+
+        .drawer-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .drawer-meta {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .drawer-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .drawer-meta-label {
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .drawer-meta-value {
+            color: var(--text-secondary);
+        }
+
+        .drawer-close-button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .drawer-close-button:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .drawer-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        .drawer-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .drawer-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .drawer-section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--primary-green);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .drawer-section-content {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .drawer-section-content code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: var(--terminal);
+        }
+
+        .drawer-section-content pre {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .drawer-section-content a {
+            color: var(--primary-green);
+            text-decoration: none;
+        }
+
+        .drawer-section-content a:hover {
+            text-decoration: underline;
+        }
+
+        .drawer-severity-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .drawer-severity-badge.critical {
+            background: var(--critical);
+            color: white;
+        }
+
+        .drawer-severity-badge.high {
+            background: var(--high);
+            color: white;
+        }
+
+        .drawer-severity-badge.medium {
+            background: var(--medium);
+            color: white;
+        }
+
+        .drawer-severity-badge.low {
+            background: var(--low);
+            color: white;
+        }
+
+        .drawer-severity-badge.info {
+            background: var(--info);
+            color: white;
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar-right {
                 width: 300px;
+            }
+
+            .vulnerability-drawer {
+                width: 500px;
             }
         }
 
@@ -874,6 +1080,11 @@
             .sidebar-left, .sidebar-right {
                 width: 100%;
                 max-height: 200px;
+            }
+
+            .vulnerability-drawer {
+                width: 100vw;
+                right: -100vw;
             }
         }
     </style>
@@ -2079,7 +2290,7 @@
                 card.appendChild(timestamp);
 
                 card.addEventListener('click', () => {
-                    alert(`Vulnerability: ${vuln.title}\n\n${vuln.content}`);
+                    openVulnerabilityDrawer(vuln);
                 });
 
                 container.appendChild(card);
@@ -2294,6 +2505,89 @@
 
         // WebSocket handles real-time updates, no need for simulation
 
+        // Vulnerability Drawer Functions
+        function formatVulnerabilityContent(content) {
+            if (!content) return '';
+            
+            // Escape HTML first
+            let formatted = escapeHtml(content);
+            
+            // Detect and format URLs
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            formatted = formatted.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            
+            // Detect and format curl commands (lines starting with curl)
+            const curlRegex = /(curl\s+[^\n]+)/g;
+            formatted = formatted.replace(curlRegex, '<pre>$1</pre>');
+            
+            // Detect and format endpoints (paths starting with /)
+            const endpointRegex = /(\/[^\s\)]+)/g;
+            formatted = formatted.replace(endpointRegex, '<code>$1</code>');
+            
+            // Detect code blocks (between backticks)
+            const codeBlockRegex = /`([^`]+)`/g;
+            formatted = formatted.replace(codeBlockRegex, '<code>$1</code>');
+            
+            return formatted;
+        }
+
+        function openVulnerabilityDrawer(vuln) {
+            const drawer = document.getElementById('vulnerabilityDrawer');
+            const overlay = document.getElementById('vulnerabilityDrawerOverlay');
+            const titleEl = document.getElementById('drawerTitle');
+            const idEl = document.getElementById('drawerId');
+            const severityEl = document.getElementById('drawerSeverity');
+            const timestampEl = document.getElementById('drawerTimestamp');
+            const contentEl = document.getElementById('drawerContent');
+            
+            // Set title
+            titleEl.textContent = vuln.title || 'Vulnerabilidade';
+            
+            // Set ID
+            idEl.textContent = vuln.id || 'N/A';
+            
+            // Set severity badge
+            const severity = (vuln.severity || 'info').toLowerCase();
+            severityEl.textContent = severity.toUpperCase();
+            severityEl.className = `drawer-severity-badge ${severity}`;
+            
+            // Set timestamp
+            if (vuln.timestamp) {
+                const date = vuln.timestamp instanceof Date ? vuln.timestamp : new Date(vuln.timestamp);
+                timestampEl.textContent = date.toLocaleString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } else {
+                timestampEl.textContent = 'N/A';
+            }
+            
+            // Format and set content
+            const formattedContent = formatVulnerabilityContent(vuln.content || '');
+            contentEl.innerHTML = formattedContent;
+            
+            // Show drawer and overlay
+            drawer.classList.add('active');
+            overlay.classList.add('active');
+            
+            // Prevent body scroll when drawer is open
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeVulnerabilityDrawer() {
+            const drawer = document.getElementById('vulnerabilityDrawer');
+            const overlay = document.getElementById('vulnerabilityDrawerOverlay');
+            
+            drawer.classList.remove('active');
+            overlay.classList.remove('active');
+            
+            // Restore body scroll
+            document.body.style.overflow = '';
+        }
+
         // Event listeners
         document.getElementById('sendButton').addEventListener('click', sendMessage);
         document.getElementById('chatInput').addEventListener('keypress', (e) => {
@@ -2302,6 +2596,25 @@
             }
         });
         document.getElementById('stopButton').addEventListener('click', stopAgent);
+        
+        // Drawer event listeners
+        document.getElementById('drawerCloseButton').addEventListener('click', closeVulnerabilityDrawer);
+        document.getElementById('vulnerabilityDrawerOverlay').addEventListener('click', closeVulnerabilityDrawer);
+        
+        // Prevent drawer from closing when clicking inside it
+        document.getElementById('vulnerabilityDrawer').addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        
+        // Close drawer on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const drawer = document.getElementById('vulnerabilityDrawer');
+                if (drawer.classList.contains('active')) {
+                    closeVulnerabilityDrawer();
+                }
+            }
+        });
 
         // Initialization
         async function init() {
@@ -2335,6 +2648,37 @@
             init();
         }
     </script>
+
+    <!-- Vulnerability Drawer -->
+    <div class="drawer-overlay" id="vulnerabilityDrawerOverlay"></div>
+    <div class="vulnerability-drawer" id="vulnerabilityDrawer">
+        <div class="drawer-header">
+            <div class="drawer-header-content">
+                <div class="drawer-title" id="drawerTitle"></div>
+                <div class="drawer-meta">
+                    <div class="drawer-meta-item">
+                        <span class="drawer-meta-label">ID:</span>
+                        <span class="drawer-meta-value" id="drawerId"></span>
+                    </div>
+                    <div class="drawer-meta-item">
+                        <span class="drawer-meta-label">Severidade:</span>
+                        <span class="drawer-severity-badge" id="drawerSeverity"></span>
+                    </div>
+                    <div class="drawer-meta-item">
+                        <span class="drawer-meta-label">Data:</span>
+                        <span class="drawer-meta-value" id="drawerTimestamp"></span>
+                    </div>
+                </div>
+            </div>
+            <button class="drawer-close-button" id="drawerCloseButton" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="drawer-content">
+            <div class="drawer-section">
+                <div class="drawer-section-title">Detalhes</div>
+                <div class="drawer-section-content" id="drawerContent"></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 
