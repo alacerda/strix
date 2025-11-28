@@ -289,6 +289,76 @@
             word-break: break-all;
         }
 
+        /* Terminal output formatting */
+        .terminal-command {
+            background: var(--bg-tertiary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--terminal);
+            border-left: 3px solid var(--terminal);
+        }
+
+        .terminal-output {
+            background: var(--bg-primary);
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .terminal-meta {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+
+        .terminal-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .terminal-meta-label {
+            font-weight: 600;
+        }
+
+        .terminal-meta-value {
+            font-family: 'Courier New', monospace;
+        }
+
+        .exit-code-success {
+            color: var(--success);
+        }
+
+        .exit-code-error {
+            color: var(--error);
+        }
+
+        .tool-args-separator {
+            height: 1px;
+            background: var(--border-color);
+            margin: 0.75rem 0;
+        }
+
+        .tool-result-separator {
+            height: 1px;
+            background: var(--border-color);
+            margin: 0.75rem 0;
+        }
+
         .chat-input-container {
             padding: 1rem;
             background: var(--bg-secondary);
@@ -1059,43 +1129,89 @@
 
         function renderScansList() {
             const container = document.getElementById('scansGrid');
+            container.textContent = ''; // Clear safely
+            
             if (appState.scans.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🦉</div>
-                        <p>No scans yet. Create your first scan to get started.</p>
-                    </div>
-                `;
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                
+                const icon = document.createElement('div');
+                icon.className = 'empty-state-icon';
+                icon.textContent = '🦉';
+                
+                const text = document.createElement('p');
+                text.textContent = 'No scans yet. Create your first scan to get started.';
+                
+                emptyState.appendChild(icon);
+                emptyState.appendChild(text);
+                container.appendChild(emptyState);
                 return;
             }
 
-            container.innerHTML = appState.scans.map(scan => {
+            appState.scans.forEach(scan => {
                 const targets = scan.targets || [];
                 const targetDisplay = targets.length > 0 
                     ? targets.map(t => t.original || t.details?.target_url || t.details?.target_repo || 'Unknown').join(', ')
                     : 'No targets';
                 
-                return `
-                    <div class="scan-card" onclick="showScanView('${scan.scan_id}')">
-                        <div class="scan-card-header">
-                            <div class="scan-card-title">${escapeHtml(scan.run_name || scan.scan_id)}</div>
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <span class="scan-status-badge ${scan.status}">${scan.status}</span>
-                                <button class="scan-card-delete-button" onclick="event.stopPropagation(); deleteScan('${scan.scan_id}');" title="Delete scan">
-                                    🗑️
-                                </button>
-                            </div>
-                        </div>
-                        <div class="scan-card-info">
-                            <div>Started: ${new Date(scan.start_time).toLocaleString()}</div>
-                            ${scan.end_time ? `<div>Ended: ${new Date(scan.end_time).toLocaleString()}</div>` : ''}
-                        </div>
-                        <div class="scan-card-targets">
-                            <div class="scan-card-target">${escapeHtml(targetDisplay)}</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                const card = document.createElement('div');
+                card.className = 'scan-card';
+                card.addEventListener('click', () => showScanView(scan.scan_id));
+                
+                const header = document.createElement('div');
+                header.className = 'scan-card-header';
+                
+                const title = document.createElement('div');
+                title.className = 'scan-card-title';
+                title.textContent = scan.run_name || scan.scan_id;
+                
+                const headerRight = document.createElement('div');
+                headerRight.style.cssText = 'display: flex; align-items: center; gap: 0.5rem;';
+                
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `scan-status-badge ${scan.status}`;
+                statusBadge.textContent = scan.status;
+                
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'scan-card-delete-button';
+                deleteButton.textContent = '🗑️';
+                deleteButton.title = 'Delete scan';
+                deleteButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteScan(scan.scan_id);
+                });
+                
+                headerRight.appendChild(statusBadge);
+                headerRight.appendChild(deleteButton);
+                header.appendChild(title);
+                header.appendChild(headerRight);
+                
+                const info = document.createElement('div');
+                info.className = 'scan-card-info';
+                
+                const started = document.createElement('div');
+                started.textContent = `Started: ${new Date(scan.start_time).toLocaleString()}`;
+                info.appendChild(started);
+                
+                if (scan.end_time) {
+                    const ended = document.createElement('div');
+                    ended.textContent = `Ended: ${new Date(scan.end_time).toLocaleString()}`;
+                    info.appendChild(ended);
+                }
+                
+                const targetsDiv = document.createElement('div');
+                targetsDiv.className = 'scan-card-targets';
+                
+                const targetDiv = document.createElement('div');
+                targetDiv.className = 'scan-card-target';
+                targetDiv.textContent = targetDisplay;
+                targetsDiv.appendChild(targetDiv);
+                
+                card.appendChild(header);
+                card.appendChild(info);
+                card.appendChild(targetsDiv);
+                container.appendChild(card);
+            });
         }
 
         // Create scan
@@ -1115,10 +1231,23 @@
             const container = document.getElementById('targetInputs');
             const newInput = document.createElement('div');
             newInput.className = 'target-input-group';
-            newInput.innerHTML = `
-                <input type="text" name="target" placeholder="URL, repository, domain, IP, or local path" required />
-                <button type="button" class="remove-target-button" onclick="removeTargetInput(this)">Remove</button>
-            `;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'target';
+            input.placeholder = 'URL, repository, domain, IP, or local path';
+            input.required = true;
+            
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'remove-target-button';
+            removeButton.textContent = 'Remove';
+            removeButton.addEventListener('click', function() {
+                removeTargetInput(this);
+            });
+            
+            newInput.appendChild(input);
+            newInput.appendChild(removeButton);
             container.appendChild(newInput);
             updateRemoveButtons();
         }
@@ -1516,15 +1645,22 @@
         // Render agents tree
         function renderAgentsTree() {
             const container = document.getElementById('agentsTree');
-            container.innerHTML = '';
+            container.textContent = ''; // Clear safely
 
             if (Object.keys(appState.agents).length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🤖</div>
-                        <p>Waiting for agents...</p>
-                    </div>
-                `;
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                
+                const icon = document.createElement('div');
+                icon.className = 'empty-state-icon';
+                icon.textContent = '🤖';
+                
+                const text = document.createElement('p');
+                text.textContent = 'Waiting for agents...';
+                
+                emptyState.appendChild(icon);
+                emptyState.appendChild(text);
+                container.appendChild(emptyState);
                 return;
             }
 
@@ -1547,12 +1683,20 @@
 
             const statusIcon = getStatusIcon(agent.status);
             
-            node.innerHTML = `
-                <div class="agent-node-content">
-                    <span class="agent-status-icon">${statusIcon}</span>
-                    <span class="agent-name">${escapeHtml(agent.name)}</span>
-                </div>
-            `;
+            const content = document.createElement('div');
+            content.className = 'agent-node-content';
+            
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'agent-status-icon';
+            iconSpan.textContent = statusIcon;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'agent-name';
+            nameSpan.textContent = agent.name;
+            
+            content.appendChild(iconSpan);
+            content.appendChild(nameSpan);
+            node.appendChild(content);
 
             node.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1611,15 +1755,22 @@
         // Render chat messages
         function renderChatMessages() {
             const container = document.getElementById('chatMessages');
-            container.innerHTML = '';
+            container.textContent = ''; // Clear safely
 
             if (!appState.selectedAgentId) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🦉</div>
-                        <p>Select an agent from the tree to view their activities</p>
-                    </div>
-                `;
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                
+                const icon = document.createElement('div');
+                icon.className = 'empty-state-icon';
+                icon.textContent = '🦉';
+                
+                const text = document.createElement('p');
+                text.textContent = 'Select an agent from the tree to view their activities';
+                
+                emptyState.appendChild(icon);
+                emptyState.appendChild(text);
+                container.appendChild(emptyState);
                 return;
             }
 
@@ -1657,10 +1808,15 @@
             div.className = `message ${message.role}`;
             
             const time = formatTime(message.timestamp);
-            div.innerHTML = `
-                <div class="message-header">${message.role === 'user' ? 'You' : 'Agent'} • ${time}</div>
-                <div>${escapeHtml(message.content)}</div>
-            `;
+            
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            header.textContent = `${message.role === 'user' ? 'You' : 'Agent'} • ${time}`;
+            div.appendChild(header);
+            
+            const content = document.createElement('div');
+            content.textContent = message.content;
+            div.appendChild(content);
             
             return div;
         }
@@ -1675,19 +1831,64 @@
             
             const time = formatTime(tool.timestamp || tool.started_at);
             
-            div.innerHTML = `
-                <div class="tool-header">
-                    <span>→ ${getToolDisplayName(toolName)}</span>
-                    <span class="tool-status ${statusClass}">${tool.status}</span>
-                </div>
-                ${tool.args && Object.keys(tool.args).length > 0 ? `
-                    <div class="tool-args">Args: ${JSON.stringify(tool.args, null, 2)}</div>
-                ` : ''}
-                ${tool.result ? `
-                    <div class="tool-result">Result: ${JSON.stringify(tool.result, null, 2)}</div>
-                ` : ''}
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">${time}</div>
-            `;
+            // Create header
+            const header = document.createElement('div');
+            header.className = 'tool-header';
+            
+            const toolNameSpan = document.createElement('span');
+            toolNameSpan.textContent = `→ ${getToolDisplayName(toolName)}`;
+            
+            const statusSpan = document.createElement('span');
+            statusSpan.className = `tool-status ${statusClass}`;
+            statusSpan.textContent = tool.status;
+            
+            header.appendChild(toolNameSpan);
+            header.appendChild(statusSpan);
+            div.appendChild(header);
+            
+            // Create args section if present
+            if (tool.args && Object.keys(tool.args).length > 0) {
+                const argsFormatted = formatToolArgs(tool.args);
+                if (argsFormatted) {
+                    const argsDiv = document.createElement('div');
+                    argsDiv.className = 'tool-args';
+                    const argsLabel = document.createElement('div');
+                    argsLabel.style.cssText = 'font-weight: 600; margin-bottom: 0.25rem; color: var(--text-secondary);';
+                    argsLabel.textContent = 'Args:';
+                    argsDiv.appendChild(argsLabel);
+                    const argsContent = document.createElement('div');
+                    argsContent.style.cssText = 'margin-left: 0.5rem; font-family: \'Courier New\', monospace;';
+                    safeSetHTML(argsContent, argsFormatted);
+                    argsDiv.appendChild(argsContent);
+                    div.appendChild(argsDiv);
+                    
+                    // Add separator
+                    const separator = document.createElement('div');
+                    separator.className = 'tool-args-separator';
+                    div.appendChild(separator);
+                }
+            }
+            
+            // Create result section if present
+            if (tool.result) {
+                const resultFormatted = formatToolResult(tool);
+                if (resultFormatted) {
+                    const resultLabel = document.createElement('div');
+                    resultLabel.style.cssText = 'font-weight: 600; margin-bottom: 0.25rem; color: var(--text-secondary);';
+                    resultLabel.textContent = 'Result:';
+                    div.appendChild(resultLabel);
+                    
+                    const resultContent = document.createElement('div');
+                    safeSetHTML(resultContent, resultFormatted);
+                    div.appendChild(resultContent);
+                }
+            }
+            
+            // Add timestamp
+            const timeDiv = document.createElement('div');
+            timeDiv.style.cssText = 'font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;';
+            timeDiv.textContent = time;
+            div.appendChild(timeDiv);
             
             return div;
         }
@@ -1786,6 +1987,8 @@
         // Render severity breakdown
         function renderSeverityBreakdown() {
             const container = document.getElementById('severityBreakdown');
+            container.textContent = ''; // Clear safely
+            
             const counts = {
                 critical: 0,
                 high: 0,
@@ -1801,9 +2004,10 @@
                 }
             });
 
-            container.innerHTML = '';
+            let hasAny = false;
             Object.entries(counts).forEach(([severity, count]) => {
                 if (count > 0) {
+                    hasAny = true;
                     const badge = document.createElement('span');
                     badge.className = `severity-badge severity-${severity}`;
                     badge.textContent = `${severity.toUpperCase()}: ${count}`;
@@ -1811,23 +2015,33 @@
                 }
             });
 
-            if (container.innerHTML === '') {
-                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No vulnerabilities found</div>';
+            if (!hasAny) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.style.cssText = 'color: var(--text-muted); font-size: 0.85rem;';
+                emptyMsg.textContent = 'No vulnerabilities found';
+                container.appendChild(emptyMsg);
             }
         }
 
         // Render vulnerabilities list
         function renderVulnerabilities() {
             const container = document.getElementById('vulnerabilitiesList');
-            container.innerHTML = '';
+            container.textContent = ''; // Clear safely
 
             if (appState.vulnerabilities.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">✅</div>
-                        <p>No vulnerabilities found yet</p>
-                    </div>
-                `;
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                
+                const icon = document.createElement('div');
+                icon.className = 'empty-state-icon';
+                icon.textContent = '✅';
+                
+                const text = document.createElement('p');
+                text.textContent = 'No vulnerabilities found yet';
+                
+                emptyState.appendChild(icon);
+                emptyState.appendChild(text);
+                container.appendChild(emptyState);
                 return;
             }
 
@@ -1835,14 +2049,34 @@
                 const card = document.createElement('div');
                 card.className = `vulnerability-card ${vuln.severity.toLowerCase()}`;
                 
-                card.innerHTML = `
-                    <div class="vulnerability-header">
-                        <div class="vulnerability-title">${escapeHtml(vuln.title)}</div>
-                        <div class="vulnerability-id">${vuln.id}</div>
-                    </div>
-                    <div class="vulnerability-content">${escapeHtml(vuln.content.substring(0, 150))}${vuln.content.length > 150 ? '...' : ''}</div>
-                    <div class="vulnerability-timestamp">${vuln.timestamp ? formatTime(vuln.timestamp) : ''}</div>
-                `;
+                const header = document.createElement('div');
+                header.className = 'vulnerability-header';
+                
+                const title = document.createElement('div');
+                title.className = 'vulnerability-title';
+                title.textContent = vuln.title;
+                
+                const id = document.createElement('div');
+                id.className = 'vulnerability-id';
+                id.textContent = vuln.id;
+                
+                header.appendChild(title);
+                header.appendChild(id);
+                
+                const content = document.createElement('div');
+                content.className = 'vulnerability-content';
+                const contentText = vuln.content.length > 150 
+                    ? vuln.content.substring(0, 150) + '...'
+                    : vuln.content;
+                content.textContent = contentText;
+                
+                const timestamp = document.createElement('div');
+                timestamp.className = 'vulnerability-timestamp';
+                timestamp.textContent = vuln.timestamp ? formatTime(vuln.timestamp) : '';
+                
+                card.appendChild(header);
+                card.appendChild(content);
+                card.appendChild(timestamp);
 
                 card.addEventListener('click', () => {
                     alert(`Vulnerability: ${vuln.title}\n\n${vuln.content}`);
@@ -1930,7 +2164,117 @@
             }
         }
 
-        // Utilities
+        // Utilities - Security and Formatting
+        function escapeHtml(text) {
+            if (text == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        function formatJSONSafe(obj) {
+            try {
+                const jsonStr = JSON.stringify(obj, null, 2);
+                return escapeHtml(jsonStr);
+            } catch (e) {
+                return escapeHtml(String(obj));
+            }
+        }
+
+        function formatToolArgs(args) {
+            if (!args || Object.keys(args).length === 0) {
+                return null;
+            }
+            
+            const parts = [];
+            for (const [key, value] of Object.entries(args)) {
+                let valueStr;
+                if (typeof value === 'string') {
+                    valueStr = escapeHtml(value);
+                } else if (typeof value === 'object') {
+                    valueStr = formatJSONSafe(value);
+                } else {
+                    valueStr = escapeHtml(String(value));
+                }
+                parts.push(`<span style="color: var(--text-secondary);">${escapeHtml(key)}</span>: <span style="color: var(--text-primary);">${valueStr}</span>`);
+            }
+            return parts.join('<br>');
+        }
+
+        function formatTerminalResult(result) {
+            if (!result || typeof result !== 'object') {
+                return null;
+            }
+
+            const parts = [];
+            
+            // Command
+            if (result.command) {
+                parts.push(`<div class="terminal-command">$ ${escapeHtml(result.command)}</div>`);
+            }
+
+            // Output content
+            if (result.content !== undefined && result.content !== null) {
+                const content = String(result.content);
+                if (content.trim()) {
+                    parts.push(`<div class="terminal-output">${escapeHtml(content)}</div>`);
+                }
+            }
+
+            // Metadata (status, exit_code, working_dir)
+            const metaParts = [];
+            if (result.status) {
+                metaParts.push(`<span class="terminal-meta-item"><span class="terminal-meta-label">Status:</span> <span class="terminal-meta-value">${escapeHtml(result.status)}</span></span>`);
+            }
+            if (result.exit_code !== undefined && result.exit_code !== null) {
+                const exitCodeClass = result.exit_code === 0 ? 'exit-code-success' : 'exit-code-error';
+                metaParts.push(`<span class="terminal-meta-item"><span class="terminal-meta-label">Exit Code:</span> <span class="terminal-meta-value ${exitCodeClass}">${escapeHtml(result.exit_code)}</span></span>`);
+            }
+            if (result.working_dir) {
+                metaParts.push(`<span class="terminal-meta-item"><span class="terminal-meta-label">Working Dir:</span> <span class="terminal-meta-value">${escapeHtml(result.working_dir)}</span></span>`);
+            }
+            if (result.terminal_id) {
+                metaParts.push(`<span class="terminal-meta-item"><span class="terminal-meta-label">Terminal ID:</span> <span class="terminal-meta-value">${escapeHtml(result.terminal_id)}</span></span>`);
+            }
+            if (result.error) {
+                metaParts.push(`<span class="terminal-meta-item"><span class="terminal-meta-label" style="color: var(--error);">Error:</span> <span class="terminal-meta-value" style="color: var(--error);">${escapeHtml(result.error)}</span></span>`);
+            }
+
+            if (metaParts.length > 0) {
+                parts.push(`<div class="terminal-meta">${metaParts.join('')}</div>`);
+            }
+
+            return parts.length > 0 ? parts.join('') : null;
+        }
+
+        function formatToolResult(tool) {
+            const toolName = tool.toolName || tool.tool_name;
+            const result = tool.result;
+
+            if (!result) {
+                return null;
+            }
+
+            // Special formatting for terminal_execute
+            if (toolName === 'terminal_execute') {
+                return formatTerminalResult(result);
+            }
+
+            // For other tools, format as JSON but safely escaped
+            if (typeof result === 'object') {
+                return `<div class="tool-result">${formatJSONSafe(result)}</div>`;
+            }
+
+            // For string results, escape and display
+            return `<div class="tool-result">${escapeHtml(String(result))}</div>`;
+        }
+
+        function safeSetHTML(element, html) {
+            // Only set HTML if it's safe static content or properly escaped
+            // For dynamic content, always use textContent or createElement
+            element.innerHTML = html;
+        }
+
         function formatTime(date) {
             if (!(date instanceof Date)) {
                 date = new Date(date);
@@ -1946,12 +2290,6 @@
                 return (num / 1000).toFixed(1) + 'K';
             }
             return num.toString();
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
 
         // WebSocket handles real-time updates, no need for simulation
