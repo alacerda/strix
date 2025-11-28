@@ -19,6 +19,7 @@ from rich.text import Text
 
 from strix.interface.cli import run_cli
 from strix.interface.tui import run_tui
+from strix.interface.web import run_web
 from strix.interface.utils import (
     assign_workspace_subdirs,
     build_final_stats_text,
@@ -313,6 +314,26 @@ Examples:
         ),
     )
 
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Run in web mode (starts a web server with interactive interface).",
+    )
+
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=8080,
+        help="Port for web interface (default: 8080).",
+    )
+
+    parser.add_argument(
+        "--web-host",
+        type=str,
+        default="127.0.0.1",
+        help="Host for web interface (default: 127.0.0.1).",
+    )
+
     args = parser.parse_args()
 
     if args.instruction:
@@ -482,18 +503,21 @@ def main() -> None:
 
     args.local_sources = collect_local_sources(args.targets_info)
 
-    if args.non_interactive:
+    if args.web:
+        asyncio.run(run_web(args))
+        # In web mode, server keeps running, so we don't show completion message here
+        # The web interface will show the results
+    elif args.non_interactive:
         asyncio.run(run_cli(args))
-    else:
-        asyncio.run(run_tui(args))
-
-    results_path = Path("strix_runs") / args.run_name
-    display_completion_message(args, results_path)
-
-    if args.non_interactive:
+        results_path = Path("strix_runs") / args.run_name
+        display_completion_message(args, results_path)
         tracer = get_global_tracer()
         if tracer and tracer.vulnerability_reports:
             sys.exit(2)
+    else:
+        asyncio.run(run_tui(args))
+        results_path = Path("strix_runs") / args.run_name
+        display_completion_message(args, results_path)
 
 
 if __name__ == "__main__":

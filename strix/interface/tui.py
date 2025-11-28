@@ -335,9 +335,31 @@ class StrixTUIApp(App):  # type: ignore[misc]
         def cleanup_on_exit() -> None:
             self.tracer.cleanup()
 
-        def signal_handler(_signum: int, _frame: Any) -> None:
+        def signal_handler(signum: int, _frame: Any) -> None:
+            # Cleanup tracer first
             self.tracer.cleanup()
-            sys.exit(0)
+            
+            # For SIGINT (Ctrl+C), Textual handles it through bindings (action_request_quit),
+            # which will call action_custom_quit() -> self.exit() for normal exit flow.
+            # We still register SIGINT here for cleanup, but let Textual handle the exit.
+            if signum == signal.SIGINT:
+                # Textual will handle the exit through its binding system
+                # We just ensure cleanup happens
+                return
+            
+            # For SIGTERM and SIGHUP, we need to explicitly exit the app
+            # since these signals don't go through Textual's binding system
+            sighup_value = getattr(signal, "SIGHUP", None)
+            if signum == signal.SIGTERM or (sighup_value is not None and signum == sighup_value):
+                # Call exit() to properly terminate the Textual app
+                # This allows main.py to display completion message via atexit handlers
+                # Textual's exit() is designed to be called from signal handlers
+                try:
+                    self.exit()
+                except Exception:  # noqa: BLE001
+                    # Fallback: use sys.exit if Textual's exit() fails
+                    # This ensures the app terminates even in error cases
+                    sys.exit(0)
 
         atexit.register(cleanup_on_exit)
         signal.signal(signal.SIGINT, signal_handler)

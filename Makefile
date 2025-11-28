@@ -23,6 +23,7 @@ help:
 
 install:
 	poetry install --only=main
+	pipx install . --force
 
 dev-install:
 	poetry install --with=dev
