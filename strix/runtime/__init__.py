@@ -9,7 +9,7 @@ def get_runtime() -> AbstractRuntime:
     if runtime_backend == "docker":
         from .docker_runtime import DockerRuntime
 
-        return DockerRuntime()
+        return DockerRuntime.get_instance()
 
     raise ValueError(
         f"Unsupported runtime backend: {runtime_backend}. Only 'docker' is supported for now."

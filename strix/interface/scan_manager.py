@@ -51,7 +51,7 @@ class ScanInfo:
         try:
             from strix.runtime.docker_runtime import DockerRuntime
             
-            docker_runtime = DockerRuntime()
+            docker_runtime = DockerRuntime.get_instance()
             return docker_runtime.get_scan_container_info(self.scan_id)
         except Exception as e:
             logger.debug(f"Failed to get Docker info for scan {self.scan_id}: {e}")
@@ -537,12 +537,11 @@ class ScanManager:
         try:
             from strix.runtime.docker_runtime import DockerRuntime
             
-            docker_runtime = DockerRuntime()
+            docker_runtime = DockerRuntime.get_instance()
             docker_runtime.delete_scan_containers(scan_id)
             logger.info(f"Deleted Docker containers for scan {scan_id}")
         except Exception as e:
-            logger.warning(f"Failed to delete Docker containers for scan {scan_id}: {e}")
-            # Continue with file deletion even if Docker cleanup fails
+            logger.error(f"Failed to delete Docker containers for scan {scan_id}: {e}", exc_info=True)
         
         # Delete files from disk
         run_dir = self._runs_dir / scan_id
