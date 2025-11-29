@@ -240,9 +240,15 @@ async def _execute_single_tool(
 
 def _get_tracer_and_agent_id(agent_state: Any | None) -> tuple[Any | None, str]:
     try:
-        from strix.telemetry.tracer import get_global_tracer
+        from strix.telemetry.tracer import get_context_tracer
 
-        tracer = get_global_tracer()
+        tracer = None
+        if agent_state and hasattr(agent_state, "tracer"):
+            tracer = agent_state.tracer
+        if tracer is None and hasattr(agent_state, "agent") and hasattr(agent_state.agent, "tracer"):
+            tracer = agent_state.agent.tracer
+        if tracer is None:
+            tracer = get_context_tracer()
         agent_id = agent_state.agent_id if agent_state else "unknown_agent"
     except (ImportError, AttributeError):
         tracer = None

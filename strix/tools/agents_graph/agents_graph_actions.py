@@ -248,6 +248,8 @@ def create_agent(
         }
         if parent_agent and hasattr(parent_agent, "non_interactive"):
             agent_config["non_interactive"] = parent_agent.non_interactive
+        if parent_agent and hasattr(parent_agent, "tracer"):
+            agent_config["tracer"] = parent_agent.tracer
 
         agent = StrixAgent(agent_config)
 
@@ -500,9 +502,15 @@ def stop_agent(agent_id: str) -> dict[str, Any]:
         agent_node["status"] = "stopping"
 
         try:
-            from strix.telemetry.tracer import get_global_tracer
+            from strix.telemetry.tracer import get_context_tracer
 
-            tracer = get_global_tracer()
+            tracer = None
+            if agent_id in _agent_instances:
+                agent_instance = _agent_instances[agent_id]
+                if hasattr(agent_instance, "tracer"):
+                    tracer = agent_instance.tracer
+            if tracer is None:
+                tracer = get_context_tracer()
             if tracer:
                 tracer.update_agent_status(agent_id, "stopping")
         except (ImportError, AttributeError):
@@ -591,9 +599,15 @@ def wait_for_message(
             _agent_graph["nodes"][agent_id]["waiting_reason"] = reason
 
         try:
-            from strix.telemetry.tracer import get_global_tracer
+            from strix.telemetry.tracer import get_context_tracer
 
-            tracer = get_global_tracer()
+            tracer = None
+            if agent_id in _agent_instances:
+                agent_instance = _agent_instances[agent_id]
+                if hasattr(agent_instance, "tracer"):
+                    tracer = agent_instance.tracer
+            if tracer is None:
+                tracer = get_context_tracer()
             if tracer:
                 tracer.update_agent_status(agent_id, "waiting")
         except (ImportError, AttributeError):

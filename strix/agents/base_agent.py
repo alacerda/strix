@@ -80,9 +80,13 @@ class BaseAgent(metaclass=AgentMeta):
             self.llm.set_agent_identity(self.agent_name, self.state.agent_id)
         self._current_task: asyncio.Task[Any] | None = None
 
-        from strix.telemetry.tracer import get_global_tracer
+        tracer = config.get("tracer")
+        if tracer is None:
+            from strix.telemetry.tracer import get_context_tracer
 
-        tracer = get_global_tracer()
+            tracer = get_context_tracer()
+        self.tracer = tracer
+
         if tracer:
             tracer.log_agent_creation(
                 agent_id=self.state.agent_id,
@@ -153,9 +157,7 @@ class BaseAgent(metaclass=AgentMeta):
     async def agent_loop(self, task: str) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         await self._initialize_sandbox_and_state(task)
 
-        from strix.telemetry.tracer import get_global_tracer
-
-        tracer = get_global_tracer()
+        tracer = self.tracer
 
         while True:
             self._check_agent_messages(self.state)
@@ -271,9 +273,7 @@ class BaseAgent(metaclass=AgentMeta):
             self.state.resume_from_waiting()
             self.state.add_message("assistant", "Waiting timeout reached. Resuming execution.")
 
-            from strix.telemetry.tracer import get_global_tracer
-
-            tracer = get_global_tracer()
+            tracer = self.tracer
             if tracer:
                 tracer.update_agent_status(self.state.agent_id, "running")
 
@@ -333,11 +333,10 @@ class BaseAgent(metaclass=AgentMeta):
         sandbox_mode = os.getenv("STRIX_SANDBOX_MODE", "false").lower() == "true"
         if not sandbox_mode and self.state.sandbox_id is None:
             from strix.runtime import get_runtime
-            from strix.telemetry.tracer import get_global_tracer
 
             scan_id = None
             try:
-                tracer = get_global_tracer()
+                tracer = self.tracer
                 if tracer and tracer.scan_config:
                     scan_id = tracer.scan_config.get("scan_id")
             except (ImportError, AttributeError):
@@ -462,18 +461,14 @@ class BaseAgent(metaclass=AgentMeta):
                                     state.resume_from_waiting()
                                     has_new_messages = True
 
-                                    from strix.telemetry.tracer import get_global_tracer
-
-                                    tracer = get_global_tracer()
+                                    tracer = self.tracer
                                     if tracer:
                                         tracer.update_agent_status(state.agent_id, "running")
                             else:
                                 state.resume_from_waiting()
                                 has_new_messages = True
 
-                                from strix.telemetry.tracer import get_global_tracer
-
-                                tracer = get_global_tracer()
+                                tracer = self.tracer
                                 if tracer:
                                     tracer.update_agent_status(state.agent_id, "running")
 
@@ -513,9 +508,7 @@ class BaseAgent(metaclass=AgentMeta):
                         message["read"] = True
 
                 if has_new_messages and not state.is_waiting_for_input():
-                    from strix.telemetry.tracer import get_global_tracer
-
-                    tracer = get_global_tracer()
+                    tracer = self.tracer
                     if tracer:
                         tracer.update_agent_status(agent_id, "running")
 

@@ -27,9 +27,9 @@ def create_vulnerability_report(
         return {"success": False, "message": validation_error}
 
     try:
-        from strix.telemetry.tracer import get_global_tracer
+        from strix.telemetry.tracer import get_context_tracer
 
-        tracer = get_global_tracer()
+        tracer = get_context_tracer()
         if tracer:
             report_id = tracer.add_vulnerability_report(
                 title=title,

@@ -43,9 +43,9 @@ class DockerRuntime(AbstractRuntime):
             return scan_id
         
         try:
-            from strix.telemetry.tracer import get_global_tracer
+            from strix.telemetry.tracer import get_context_tracer
 
-            tracer = get_global_tracer()
+            tracer = get_context_tracer()
             if tracer and tracer.scan_config:
                 return str(tracer.scan_config.get("scan_id", "default-scan"))
         except ImportError:

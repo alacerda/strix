@@ -1,3 +1,4 @@
+import contextvars
 import json
 import logging
 from datetime import UTC, datetime
@@ -13,6 +14,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _global_tracer: Optional["Tracer"] = None
+_tracer_context: contextvars.ContextVar[Optional["Tracer"]] = contextvars.ContextVar(
+    "tracer", default=None
+)
 
 
 def get_global_tracer() -> Optional["Tracer"]:
@@ -22,6 +26,17 @@ def get_global_tracer() -> Optional["Tracer"]:
 def set_global_tracer(tracer: "Tracer") -> None:
     global _global_tracer  # noqa: PLW0603
     _global_tracer = tracer
+
+
+def get_context_tracer() -> Optional["Tracer"]:
+    context_tracer = _tracer_context.get()
+    if context_tracer is not None:
+        return context_tracer
+    return get_global_tracer()
+
+
+def set_context_tracer(tracer: Optional["Tracer"]) -> None:
+    _tracer_context.set(tracer)
 
 
 class Tracer:
@@ -344,6 +359,8 @@ class Tracer:
         }
 
         for agent_instance in _agent_instances.values():
+            if hasattr(agent_instance, "tracer") and agent_instance.tracer is not self:
+                continue
             if hasattr(agent_instance, "llm") and hasattr(agent_instance.llm, "_total_stats"):
                 agent_stats = agent_instance.llm._total_stats
                 current_stats["input_tokens"] += agent_stats.input_tokens

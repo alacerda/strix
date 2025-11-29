@@ -12,7 +12,13 @@ from uuid import uuid4
 
 from strix.agents.StrixAgent import StrixAgent
 from strix.llm.config import LLMConfig
-from strix.telemetry.tracer import Tracer, get_global_tracer, set_global_tracer
+from strix.telemetry.tracer import (
+    Tracer,
+    get_context_tracer,
+    get_global_tracer,
+    set_context_tracer,
+    set_global_tracer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,24 +150,30 @@ class ScanManager:
         agent_config = {
             "llm_config": llm_config,
             "max_iterations": max_iterations,
+            "tracer": tracer,
         }
         if local_sources:
             agent_config["local_sources"] = local_sources
 
-        # Save the previous global tracer (if any)
-        previous_tracer = get_global_tracer()
+        from strix.telemetry.tracer import set_context_tracer
 
-        # Set this scan's tracer as global temporarily so StrixAgent can register itself
-        set_global_tracer(tracer)
+        previous_context_tracer = None
+        try:
+            from strix.telemetry.tracer import get_context_tracer
+
+            previous_context_tracer = get_context_tracer()
+        except Exception:
+            pass
+
+        set_context_tracer(tracer)
 
         try:
-            # Create agent (now it will be able to register itself in the tracer)
             agent = StrixAgent(agent_config)
         finally:
-            # Restore the previous global tracer (if there was one)
-            # If there wasn't one, leave this scan's tracer as global since it's the active scan
-            if previous_tracer is not None:
-                set_global_tracer(previous_tracer)
+            if previous_context_tracer is not None:
+                set_context_tracer(previous_context_tracer)
+            else:
+                set_context_tracer(None)
 
         # Create scan info
         scan_info = ScanInfo(scan_id, tracer, agent, scan_config, agent_config)
@@ -345,8 +357,10 @@ class ScanManager:
 
         # Start scan in background task
         async def run_scan():
-            previous_tracer = get_global_tracer()
-            set_global_tracer(scan_info.tracer)
+            from strix.telemetry.tracer import get_context_tracer, set_context_tracer
+
+            previous_context_tracer = get_context_tracer()
+            set_context_tracer(scan_info.tracer)
             try:
                 await scan_info.agent.execute_scan(scan_info.scan_config)
                 scan_info.status = "completed"
@@ -361,8 +375,10 @@ class ScanManager:
                 scan_info.end_time = datetime.now(UTC).isoformat()
                 logger.exception(f"Scan {scan_id} failed: {e}")
             finally:
-                if previous_tracer is not None:
-                    set_global_tracer(previous_tracer)
+                if previous_context_tracer is not None:
+                    set_context_tracer(previous_context_tracer)
+                else:
+                    set_context_tracer(None)
                 scan_info.tracer.cleanup()
                 scan_info.save_metadata()
                 # Broadcast scan updated event (thread-safe via queue)
