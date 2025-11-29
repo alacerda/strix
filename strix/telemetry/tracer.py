@@ -265,7 +265,7 @@ class Tracer:
 
             if self.vulnerability_reports:
                 vuln_dir = run_dir / "vulnerabilities"
-                vuln_dir.mkdir(exist_ok=True)
+                vuln_dir.mkdir(parents=True, exist_ok=True)
 
                 new_reports = [
                     report

@@ -21,7 +21,6 @@ from strix.interface.utils import (
     generate_run_name,
     infer_target_type,
 )
-from strix.telemetry.tracer import get_global_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -529,162 +528,6 @@ async def stop_scan_agent(scan_id: str, agent_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to stop agent: {e}") from e
 
 
-# Legacy endpoints (for backward compatibility with single-scan mode)
-
-
-@app.get("/api/agents")
-async def get_agents() -> dict[str, Any]:
-    """Get all agents."""
-    tracer = get_global_tracer()
-    if not tracer:
-        return {"agents": {}}
-
-    return {"agents": _transform_agents(tracer.agents)}
-
-
-@app.get("/api/agents/{agent_id}")
-async def get_agent(agent_id: str) -> dict[str, Any]:
-    """Get details of a specific agent."""
-    tracer = get_global_tracer()
-    if not tracer:
-        raise HTTPException(status_code=404, detail="Tracer not available")
-
-    if agent_id not in tracer.agents:
-        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
-
-    agent_data = dict(tracer.agents[agent_id])
-    if "id" in agent_data and "agent_id" not in agent_data:
-        agent_data["agent_id"] = agent_data["id"]
-
-    return agent_data
-
-
-@app.get("/api/agents/{agent_id}/messages")
-async def get_agent_messages(agent_id: str) -> dict[str, Any]:
-    """Get messages for a specific agent."""
-    tracer = get_global_tracer()
-    if not tracer:
-        return {"messages": []}
-
-    messages = [msg for msg in tracer.chat_messages if msg.get("agent_id") == agent_id]
-    return {"messages": messages}
-
-
-@app.get("/api/agents/{agent_id}/tools")
-async def get_agent_tools(agent_id: str) -> dict[str, Any]:
-    """Get tool executions for a specific agent."""
-    tracer = get_global_tracer()
-    if not tracer:
-        return {"tools": []}
-
-    tools = tracer.get_agent_tools(agent_id)
-    return {"tools": tools}
-
-
-@app.get("/api/vulnerabilities")
-async def get_vulnerabilities() -> dict[str, Any]:
-    """Get all vulnerabilities."""
-    tracer = get_global_tracer()
-    if not tracer:
-        return {"vulnerabilities": []}
-
-    return {"vulnerabilities": tracer.vulnerability_reports}
-
-
-@app.get("/api/stats")
-async def get_stats() -> dict[str, Any]:
-    """Get general statistics."""
-    tracer = get_global_tracer()
-    if not tracer:
-        return {
-            "agents": 0,
-            "tools": 0,
-            "vulnerabilities": 0,
-            "llm_stats": {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cached_tokens": 0,
-                "cost": 0.0,
-            },
-        }
-
-    llm_stats = tracer.get_total_llm_stats()
-    total_stats = llm_stats.get("total", {})
-
-    return {
-        "agents": len(tracer.agents),
-        "tools": tracer.get_real_tool_count(),
-        "vulnerabilities": len(tracer.vulnerability_reports),
-        "llm_stats": {
-            "input_tokens": total_stats.get("input_tokens", 0),
-            "output_tokens": total_stats.get("output_tokens", 0),
-            "cached_tokens": total_stats.get("cached_tokens", 0),
-            "cost": total_stats.get("cost", 0.0),
-        },
-    }
-
-
-@app.post("/api/agents/{agent_id}/message")
-async def send_agent_message(agent_id: str, request: MessageRequest) -> dict[str, Any]:
-    """Send a message to an agent."""
-    tracer = get_global_tracer()
-    if not tracer:
-        raise HTTPException(status_code=500, detail="Tracer not available")
-
-    if agent_id not in tracer.agents:
-        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
-
-    # Log the message
-    # Note: The broadcast is handled automatically by the tracer callback
-    # (wrapped_log_chat_message in web.py), so we don't need to broadcast here
-    message_id = tracer.log_chat_message(
-        content=request.content,
-        role="user",
-        agent_id=agent_id,
-    )
-
-    # Send message to agent via agents_graph
-    try:
-        from strix.tools.agents_graph.agents_graph_actions import send_user_message_to_agent
-
-        send_user_message_to_agent(agent_id, request.content)
-    except (ImportError, AttributeError) as e:
-        logger.warning(f"Failed to send message to agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
-
-    return {"success": True, "message_id": message_id}
-
-
-@app.post("/api/agents/{agent_id}/stop")
-async def stop_agent(agent_id: str) -> dict[str, Any]:
-    """Stop an agent."""
-    tracer = get_global_tracer()
-    if not tracer:
-        raise HTTPException(status_code=500, detail="Tracer not available")
-
-    if agent_id not in tracer.agents:
-        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
-
-    try:
-        from strix.tools.agents_graph.agents_graph_actions import stop_agent
-
-        result = stop_agent(agent_id)
-        if result.get("success"):
-            tracer.update_agent_status(agent_id, "stopped")
-            await websocket_manager.broadcast(
-                "agent_updated",
-                {"agent_id": agent_id, "status": "stopped"},
-            )
-            return {"success": True, "message": result.get("message", "Agent stopped")}
-        else:
-            raise HTTPException(
-                status_code=500, detail=result.get("error", "Failed to stop agent")
-            )
-    except (ImportError, AttributeError) as e:
-        logger.warning(f"Failed to stop agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to stop agent: {e}") from e
-
-
 # WebSocket endpoint
 
 
@@ -743,24 +586,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 },
             }
         )
-        
-        # Also send legacy single-scan state if global tracer exists
-        tracer = get_global_tracer()
-        if tracer:
-            await websocket.send_json(
-                {
-                    "type": "initial_state",
-                    "data": {
-                        "agents": _transform_agents(tracer.agents),
-                        "vulnerabilities": tracer.vulnerability_reports,
-                        "stats": {
-                            "agents": len(tracer.agents),
-                            "tools": tracer.get_real_tool_count(),
-                            "vulnerabilities": len(tracer.vulnerability_reports),
-                        },
-                    },
-                }
-            )
 
     # Keep connection alive and handle incoming messages
     try:
@@ -847,35 +672,4 @@ def broadcast_vulnerability(scan_id: str, report_id: str, vuln_data: dict[str, A
 def broadcast_stats(scan_id: str, stats: dict[str, Any]) -> None:
     """Broadcast stats update event (thread-safe)."""
     _event_queue.put({"type": "stats_updated", "scan_id": scan_id, "data": stats})
-
-
-# Legacy broadcasting functions (for backward compatibility with single-scan mode)
-def broadcast_agent_created_legacy(agent_id: str, agent_data: dict[str, Any]) -> None:
-    """Broadcast agent creation event (legacy, no scan_id)."""
-    _event_queue.put({"type": "agent_created", "data": {"agent_id": agent_id, **agent_data}})
-
-
-def broadcast_agent_updated_legacy(agent_id: str, updates: dict[str, Any]) -> None:
-    """Broadcast agent update event (legacy, no scan_id)."""
-    _event_queue.put({"type": "agent_updated", "data": {"agent_id": agent_id, **updates}})
-
-
-def broadcast_message_legacy(agent_id: str, message_data: dict[str, Any]) -> None:
-    """Broadcast new message event (legacy, no scan_id)."""
-    _event_queue.put({"type": "message", "data": {"agent_id": agent_id, **message_data}})
-
-
-def broadcast_tool_execution_legacy(agent_id: str, tool_data: dict[str, Any]) -> None:
-    """Broadcast tool execution event (legacy, no scan_id)."""
-    _event_queue.put({"type": "tool_execution", "data": {"agent_id": agent_id, **tool_data}})
-
-
-def broadcast_vulnerability_legacy(report_id: str, vuln_data: dict[str, Any]) -> None:
-    """Broadcast vulnerability found event (legacy, no scan_id)."""
-    _event_queue.put({"type": "vulnerability_found", "data": {"report_id": report_id, **vuln_data}})
-
-
-def broadcast_stats_legacy(stats: dict[str, Any]) -> None:
-    """Broadcast stats update event (legacy, no scan_id)."""
-    _event_queue.put({"type": "stats_updated", "data": stats})
 

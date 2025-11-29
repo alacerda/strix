@@ -1958,8 +1958,11 @@
 
         function handleWebSocketMessage(message) {
             // Filter by scan_id if we're viewing a specific scan
-            if (appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
-                return; // Ignore events from other scans
+            // If viewing a specific scan, ignore messages without scan_id or with different scan_id
+            if (appState.currentScanId) {
+                if (!message.scan_id || message.scan_id !== appState.currentScanId) {
+                    return; // Ignore events from other scans or without scan_id
+                }
             }
 
             switch (message.type) {
@@ -1972,16 +1975,16 @@
                         }
                     }
                     // Only update agents, vulnerabilities, and stats if scan_id matches or we're in list view
-                    if (message.data.agents && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
+                    if (message.data.agents && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         appState.agents = message.data.agents;
                         renderAgentsTree();
                     }
-                    if (message.data.vulnerabilities && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
+                    if (message.data.vulnerabilities && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         appState.vulnerabilities = message.data.vulnerabilities;
                         renderVulnerabilities();
                         renderSeverityBreakdown();
                     }
-                    if (message.data.stats && (!appState.currentScanId || message.scan_id === appState.currentScanId || !message.scan_id)) {
+                    if (message.data.stats && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         updateStatsFromData(message.data.stats);
                     }
                     break;
@@ -2043,7 +2046,7 @@
                     }
                     break;
                 case 'agent_updated':
-                    if (message.data.agent_id) {
+                    if (message.data.agent_id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         const agentId = message.data.agent_id;
                         if (appState.agents[agentId]) {
                             Object.assign(appState.agents[agentId], message.data);
@@ -2055,7 +2058,7 @@
                     }
                     break;
                 case 'message':
-                    if (message.data.agent_id) {
+                    if (message.data.agent_id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         const agentId = message.data.agent_id;
                         if (!appState.messages[agentId]) {
                             appState.messages[agentId] = [];
@@ -2081,7 +2084,7 @@
                     }
                     break;
                 case 'tool_execution':
-                    if (message.data.agent_id) {
+                    if (message.data.agent_id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         const agentId = message.data.agent_id;
                         if (!appState.toolExecutions[agentId]) {
                             appState.toolExecutions[agentId] = [];
@@ -2104,7 +2107,7 @@
                     }
                     break;
                 case 'vulnerability_found':
-                    if (message.data.id) {
+                    if (message.data.id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         appState.vulnerabilities.push({
                             id: message.data.id,
                             title: message.data.title,
@@ -2118,7 +2121,9 @@
                     }
                     break;
                 case 'stats_updated':
-                    updateStatsFromData(message.data);
+                    if (!appState.currentScanId || message.scan_id === appState.currentScanId) {
+                        updateStatsFromData(message.data);
+                    }
                     break;
             }
         }
@@ -2138,41 +2143,15 @@
             renderStats();
         }
 
-        // Load initial data from API (legacy mode)
+        // Load initial data from API
         async function loadInitialData() {
             if (appState.currentScanId) {
                 await loadScanData(appState.currentScanId);
                 return;
             }
 
-            try {
-                // Load agents
-                const agentsResponse = await fetch('/api/agents');
-                const agentsData = await agentsResponse.json();
-                appState.agents = agentsData.agents || {};
-
-                // Load vulnerabilities
-                const vulnResponse = await fetch('/api/vulnerabilities');
-                const vulnData = await vulnResponse.json();
-                appState.vulnerabilities = vulnData.vulnerabilities || [];
-
-                // Load stats
-                const statsResponse = await fetch('/api/stats');
-                const statsData = await statsResponse.json();
-                updateStatsFromData(statsData);
-
-                // Load messages and tools for each agent
-                for (const agentId of Object.keys(appState.agents)) {
-                    await loadAgentData(null, agentId);
-                }
-
-                renderAgentsTree();
-                renderVulnerabilities();
-                renderSeverityBreakdown();
-                renderStats();
-            } catch (error) {
-                console.error('Error loading initial data:', error);
-            }
+            // If no scan is selected, just load the scans list
+            await loadScans();
         }
 
         // Initialize data

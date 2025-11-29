@@ -14,18 +14,15 @@ from typing import Any
 import uvicorn
 from strix.agents.StrixAgent import StrixAgent
 from strix.interface.scan_manager import ScanManager
-from strix.interface.web_server import (
-    app,
-    broadcast_agent_created_legacy,
-    broadcast_agent_updated_legacy,
-    broadcast_message_legacy,
-    broadcast_stats_legacy,
-    broadcast_tool_execution_legacy,
-    broadcast_vulnerability_legacy,
-    setup_static_files,
+from strix.interface.web_server import app, setup_static_files
+from strix.interface.utils import (
+    assign_workspace_subdirs,
+    clone_repository,
+    collect_local_sources,
+    generate_run_name,
+    infer_target_type,
 )
 from strix.llm.config import LLMConfig
-from strix.telemetry.tracer import Tracer, get_global_tracer, set_global_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +71,60 @@ async def run_web(args: argparse.Namespace) -> None:
     
     setup_static_files(web_assets_path)
 
-    # Create tracer
-    scan_config = _build_scan_config(args)
-    agent_config = _build_agent_config(args)
+    # Load existing scans from disk
+    scan_manager = ScanManager.get_instance()
+    scan_manager.load_scans_from_disk()
 
-    tracer = Tracer(scan_config["run_name"])
-    tracer.set_scan_config(scan_config)
-    set_global_tracer(tracer)
+    # Process targets
+    targets_info = []
+    for target in args.targets_info:
+        try:
+            target_type, target_dict = infer_target_type(target)
+            display_target = (
+                target_dict.get("target_path", target)
+                if target_type == "local_code"
+                else target
+            )
+            targets_info.append(
+                {"type": target_type, "details": target_dict, "original": display_target}
+            )
+        except ValueError as e:
+            logger.error(f"Invalid target '{target}': {e}")
+            raise
 
-    # Setup event callbacks for WebSocket broadcasting
-    _setup_tracer_callbacks(tracer)
+    assign_workspace_subdirs(targets_info)
+
+    # Generate run name if not provided
+    run_name = args.run_name or generate_run_name(targets_info)
+
+    # Clone repositories if needed
+    for target_info in targets_info:
+        if target_info["type"] == "repository":
+            repo_url = target_info["details"]["target_repo"]
+            dest_name = target_info["details"].get("workspace_subdir")
+            cloned_path = clone_repository(repo_url, run_name, dest_name)
+            target_info["details"]["cloned_repo_path"] = cloned_path
+
+    # Collect local sources
+    local_sources = collect_local_sources(targets_info)
+
+    # Create scan
+    scan_id = scan_manager.create_scan(
+        targets=targets_info,
+        user_instructions=args.instruction or "",
+        run_name=run_name,
+        max_iterations=300,
+        local_sources=local_sources,
+    )
 
     # Setup cleanup handlers
     def cleanup_on_exit() -> None:
-        tracer.cleanup()
+        scan_info = scan_manager.get_scan(scan_id)
+        if scan_info and scan_info.tracer:
+            scan_info.tracer.cleanup()
 
     def signal_handler(_signum: int, _frame: Any) -> None:
-        tracer.cleanup()
+        cleanup_on_exit()
         sys.exit(0)
 
     atexit.register(cleanup_on_exit)
@@ -112,19 +146,26 @@ async def run_web(args: argparse.Namespace) -> None:
     server_thread.start()
 
     logger.info(f"Web interface available at http://{web_host}:{web_port}")
-    logger.info("Starting scan...")
+    logger.info(f"Starting scan {scan_id}...")
 
-    # Run scan in async context
+    # Start scan and await the task
+    scan_task = None
     try:
-        agent = StrixAgent(agent_config)
-        await agent.execute_scan(scan_config)
+        scan_task = await scan_manager.start_scan(scan_id)
+        await scan_task
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("Scan interrupted by user")
+        if scan_task:
+            scan_task.cancel()
+            try:
+                await scan_task
+            except asyncio.CancelledError:
+                pass
+        scan_manager.stop_scan(scan_id)
     except Exception as e:
         logger.exception(f"Error during scan: {e}")
         raise
     finally:
-        tracer.cleanup()
         # Keep the process alive by waiting for the server thread
         # This allows the web interface to remain accessible after scan completion
         logger.info("Scan completed. Web interface remains available.")
@@ -141,152 +182,6 @@ def _run_server(host: str, port: int) -> None:
         uvicorn.run(app, host=host, port=port, log_level="info")
     except Exception as e:
         logger.exception(f"Error running web server: {e}")
-
-
-def _setup_tracer_callbacks(tracer: Tracer) -> None:
-    """Setup callbacks on tracer to broadcast events via WebSocket."""
-
-    # Store original methods
-    original_log_agent_creation = tracer.log_agent_creation
-    original_update_agent_status = tracer.update_agent_status
-    original_log_chat_message = tracer.log_chat_message
-    original_log_tool_execution_start = tracer.log_tool_execution_start
-    original_update_tool_execution = tracer.update_tool_execution
-    original_add_vulnerability_report = tracer.add_vulnerability_report
-
-    # Broadcasting functions are now thread-safe (use queue), so we can call them directly
-    # Wrap log_agent_creation
-    def wrapped_log_agent_creation(
-        agent_id: str, name: str, task: str, parent_id: str | None = None
-    ) -> None:
-        original_log_agent_creation(agent_id, name, task, parent_id)
-        agent_data = tracer.agents.get(agent_id, {})
-        try:
-            broadcast_agent_created_legacy(agent_id, agent_data)
-        except Exception:
-            pass  # Ignore errors in broadcasting
-
-    # Wrap update_agent_status
-    def wrapped_update_agent_status(
-        agent_id: str, status: str, error_message: str | None = None
-    ) -> None:
-        original_update_agent_status(agent_id, status, error_message)
-        updates = {"status": status}
-        if error_message:
-            updates["error_message"] = error_message
-        try:
-            broadcast_agent_updated_legacy(agent_id, updates)
-        except Exception:
-            pass  # Ignore errors in broadcasting
-
-    # Wrap log_chat_message
-    def wrapped_log_chat_message(
-        content: str,
-        role: str,
-        agent_id: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> int:
-        message_id = original_log_chat_message(content, role, agent_id, metadata)
-        if agent_id:
-            message_data = {
-                "message_id": message_id,
-                "role": role,
-                "content": content,
-                "metadata": metadata or {},
-            }
-            try:
-                broadcast_message_legacy(agent_id, message_data)
-            except Exception:
-                pass  # Ignore errors in broadcasting
-        return message_id
-
-    # Wrap log_tool_execution_start
-    def wrapped_log_tool_execution_start(
-        agent_id: str, tool_name: str, args: dict[str, Any]
-    ) -> int:
-        execution_id = original_log_tool_execution_start(agent_id, tool_name, args)
-        tool_data = {
-            "execution_id": execution_id,
-            "tool_name": tool_name,
-            "args": args,
-            "status": "running",
-        }
-        try:
-            broadcast_tool_execution_legacy(agent_id, tool_data)
-        except Exception:
-            pass  # Ignore errors in broadcasting
-        return execution_id
-
-    # Wrap update_tool_execution
-    def wrapped_update_tool_execution(
-        execution_id: int, status: str, result: Any | None = None
-    ) -> None:
-        original_update_tool_execution(execution_id, status, result)
-        tool_data = tracer.tool_executions.get(execution_id)
-        if tool_data:
-            agent_id = tool_data.get("agent_id")
-            if agent_id:
-                tool_data = {
-                    "execution_id": execution_id,
-                    "tool_name": tool_data.get("tool_name"),
-                    "status": status,
-                    "result": result,
-                }
-                try:
-                    broadcast_tool_execution_legacy(agent_id, tool_data)
-                except Exception:
-                    pass  # Ignore errors in broadcasting
-
-    # Wrap add_vulnerability_report
-    def wrapped_add_vulnerability_report(
-        title: str, content: str, severity: str
-    ) -> str:
-        report_id = original_add_vulnerability_report(title, content, severity)
-        vuln_data = {
-            "id": report_id,
-            "title": title,
-            "content": content,
-            "severity": severity,
-        }
-        try:
-            broadcast_vulnerability_legacy(report_id, vuln_data)
-        except Exception:
-            pass  # Ignore errors in broadcasting
-        return report_id
-
-    # Replace methods
-    tracer.log_agent_creation = wrapped_log_agent_creation
-    tracer.update_agent_status = wrapped_update_agent_status
-    tracer.log_chat_message = wrapped_log_chat_message
-    tracer.log_tool_execution_start = wrapped_log_tool_execution_start
-    tracer.update_tool_execution = wrapped_update_tool_execution
-    tracer.add_vulnerability_report = wrapped_add_vulnerability_report
-
-    # Setup periodic stats updates
-    def update_stats_periodically() -> None:
-        while True:
-            try:
-                import time
-
-                time.sleep(2)  # Update every 2 seconds
-                current_tracer = get_global_tracer()
-                if current_tracer:
-                    llm_stats = current_tracer.get_total_llm_stats()
-                    stats = {
-                        "agents": len(current_tracer.agents),
-                        "tools": current_tracer.get_real_tool_count(),
-                        "vulnerabilities": len(current_tracer.vulnerability_reports),
-                        "llm_stats": llm_stats.get("total", {}),
-                    }
-                    try:
-                        broadcast_stats_legacy(stats)
-                    except Exception:
-                        pass  # Ignore errors in broadcasting
-            except Exception as e:
-                logger.warning(f"Error in stats update thread: {e}")
-
-    stats_thread = threading.Thread(target=update_stats_periodically, daemon=True)
-    stats_thread.start()
 
 
 def run_server_only(web_host: str = "127.0.0.1", web_port: int = 8080) -> None:

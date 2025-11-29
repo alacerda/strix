@@ -186,7 +186,7 @@ class ScanManager:
         logger.info(f"Created scan {scan_id}")
         return scan_id
 
-    async def start_scan(self, scan_id: str) -> None:
+    async def start_scan(self, scan_id: str) -> asyncio.Task[Any]:
         """Start a scan execution."""
         with self._lock:
             scan_info = self._scans.get(scan_id)
@@ -413,6 +413,8 @@ class ScanManager:
         scan_info.task = task
 
         logger.info(f"Started scan {scan_id}")
+        
+        return task
 
     def stop_scan(self, scan_id: str) -> bool:
         """Stop a running scan."""
