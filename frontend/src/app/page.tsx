@@ -15,8 +15,13 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
+    setShowCreateForm(false);
+  }, []);
+
+  useEffect(() => {
     const unsubscribeCreated = on('scan_created', (message: WebSocketMessage) => {
       if (message.data && typeof message.data === 'object' && 'scan_id' in message.data) {
+        setShowCreateForm(false);
         const scanId = message.data.scan_id as string;
         router.push(`/scan/${scanId}`);
       }
@@ -38,15 +43,21 @@ export default function HomePage() {
   }, [on, router]);
 
   const handleCreateScan = async (request: CreateScanRequest) => {
-    await createScan(request);
-    setShowCreateForm(false);
+    try {
+      await createScan(request);
+      setShowCreateForm(false);
+    } catch (err) {
+      throw err;
+    }
   };
 
   const handleDeleteScan = async (scanId: string) => {
     try {
       await deleteScan(scanId);
     } catch (err) {
-      alert(`Failed to delete scan: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to delete scan: ${errorMessage}`);
+      throw err;
     }
   };
 

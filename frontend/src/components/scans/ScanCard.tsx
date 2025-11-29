@@ -12,6 +12,7 @@ interface ScanCardProps {
 
 export function ScanCard({ scan, onDelete }: ScanCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -19,13 +20,21 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = () => {
-    onDelete(scan.scan_id);
-    setShowDeleteModal(false);
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(scan.scan_id);
+      setShowDeleteModal(false);
+    } catch (error) {
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleCancelDelete = () => {
-    setShowDeleteModal(false);
+    if (!isDeleting) {
+      setShowDeleteModal(false);
+    }
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -121,6 +130,7 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
         <DeleteScanModal
           scanId={scan.scan_id}
           scanName={scan.run_name || scan.scan_id}
+          isDeleting={isDeleting}
           onConfirm={handleConfirmDelete}
           onCancel={handleCancelDelete}
         />

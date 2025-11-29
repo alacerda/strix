@@ -25,6 +25,7 @@ export function CreateScanForm({ onSubmit, onCancel }: CreateScanFormProps) {
       const validTargets = targets.filter((t) => t.trim() !== '');
       if (validTargets.length === 0) {
         setError('At least one target is required');
+        setLoading(false);
         return;
       }
 
@@ -38,7 +39,6 @@ export function CreateScanForm({ onSubmit, onCancel }: CreateScanFormProps) {
       await onSubmit(request);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create scan');
-    } finally {
       setLoading(false);
     }
   };
