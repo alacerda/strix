@@ -190,6 +190,7 @@ class ScanManager:
         # Setup periodic stats updates for this scan
         def update_stats_periodically() -> None:
             import time
+            iteration_count = 0
             while scan_info.status == "running":
                 try:
                     time.sleep(2)  # Update every 2 seconds
@@ -208,6 +209,14 @@ class ScanManager:
                         broadcast_stats(scan_id, stats)
                     except Exception:
                         pass
+                    
+                    iteration_count += 1
+                    if iteration_count >= 5:
+                        try:
+                            scan_info.tracer.save_trace_data()
+                        except Exception:
+                            pass
+                        iteration_count = 0
                 except Exception as e:
                     logger.warning(f"Error in stats update thread for scan {scan_id}: {e}")
 

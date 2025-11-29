@@ -53,6 +53,16 @@ class Tracer:
         self._next_message_id = 1
         self._saved_vuln_ids: set[str] = set()
 
+        self._persisted_llm_stats: dict[str, Any] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cost": 0.0,
+            "requests": 0,
+            "failed_requests": 0,
+        }
+
         self.vulnerability_found_callback: Callable[[str, str, str, str], None] | None = None
 
     def set_run_name(self, run_name: str) -> None:
@@ -323,7 +333,7 @@ class Tracer:
     def get_total_llm_stats(self) -> dict[str, Any]:
         from strix.tools.agents_graph.agents_graph_actions import _agent_instances
 
-        total_stats = {
+        current_stats = {
             "input_tokens": 0,
             "output_tokens": 0,
             "cached_tokens": 0,
@@ -336,15 +346,23 @@ class Tracer:
         for agent_instance in _agent_instances.values():
             if hasattr(agent_instance, "llm") and hasattr(agent_instance.llm, "_total_stats"):
                 agent_stats = agent_instance.llm._total_stats
-                total_stats["input_tokens"] += agent_stats.input_tokens
-                total_stats["output_tokens"] += agent_stats.output_tokens
-                total_stats["cached_tokens"] += agent_stats.cached_tokens
-                total_stats["cache_creation_tokens"] += agent_stats.cache_creation_tokens
-                total_stats["cost"] += agent_stats.cost
-                total_stats["requests"] += agent_stats.requests
-                total_stats["failed_requests"] += agent_stats.failed_requests
+                current_stats["input_tokens"] += agent_stats.input_tokens
+                current_stats["output_tokens"] += agent_stats.output_tokens
+                current_stats["cached_tokens"] += agent_stats.cached_tokens
+                current_stats["cache_creation_tokens"] += agent_stats.cache_creation_tokens
+                current_stats["cost"] += agent_stats.cost
+                current_stats["requests"] += agent_stats.requests
+                current_stats["failed_requests"] += agent_stats.failed_requests
 
-        total_stats["cost"] = round(total_stats["cost"], 4)
+        total_stats = {
+            "input_tokens": self._persisted_llm_stats["input_tokens"] + current_stats["input_tokens"],
+            "output_tokens": self._persisted_llm_stats["output_tokens"] + current_stats["output_tokens"],
+            "cached_tokens": self._persisted_llm_stats["cached_tokens"] + current_stats["cached_tokens"],
+            "cache_creation_tokens": self._persisted_llm_stats["cache_creation_tokens"] + current_stats["cache_creation_tokens"],
+            "cost": round(self._persisted_llm_stats["cost"] + current_stats["cost"], 4),
+            "requests": self._persisted_llm_stats["requests"] + current_stats["requests"],
+            "failed_requests": self._persisted_llm_stats["failed_requests"] + current_stats["failed_requests"],
+        }
 
         return {
             "total": total_stats,
@@ -352,10 +370,23 @@ class Tracer:
         }
 
     def save_trace_data(self) -> None:
-        """Save trace data (agents, messages, tool executions) to disk."""
+        """Save trace data (agents, messages, tool executions, llm_stats) to disk."""
         try:
             run_dir = self.get_run_dir()
             trace_file = run_dir / "trace_data.json"
+            
+            llm_stats_result = self.get_total_llm_stats()
+            total_llm_stats = llm_stats_result.get("total", {})
+            
+            self._persisted_llm_stats = {
+                "input_tokens": total_llm_stats.get("input_tokens", 0),
+                "output_tokens": total_llm_stats.get("output_tokens", 0),
+                "cached_tokens": total_llm_stats.get("cached_tokens", 0),
+                "cache_creation_tokens": total_llm_stats.get("cache_creation_tokens", 0),
+                "cost": total_llm_stats.get("cost", 0.0),
+                "requests": total_llm_stats.get("requests", 0),
+                "failed_requests": total_llm_stats.get("failed_requests", 0),
+            }
             
             # Convert tool_executions dict keys to strings for JSON serialization
             tool_executions_serializable = {
@@ -368,6 +399,7 @@ class Tracer:
                 "tool_executions": tool_executions_serializable,
                 "next_execution_id": self._next_execution_id,
                 "next_message_id": self._next_message_id,
+                "llm_stats": self._persisted_llm_stats.copy(),
             }
             
             with trace_file.open("w", encoding="utf-8") as f:
@@ -378,7 +410,7 @@ class Tracer:
             logger.warning(f"Failed to save trace data: {e}")
 
     def load_trace_data(self) -> None:
-        """Load trace data (agents, messages, tool executions) from disk."""
+        """Load trace data (agents, messages, tool executions, llm_stats) from disk."""
         try:
             run_dir = self.get_run_dir()
             trace_file = run_dir / "trace_data.json"
@@ -409,10 +441,16 @@ class Tracer:
             if "next_message_id" in trace_data:
                 self._next_message_id = trace_data["next_message_id"]
             
+            # Load llm_stats
+            if "llm_stats" in trace_data:
+                self._persisted_llm_stats = trace_data["llm_stats"]
+            
             logger.info(f"Loaded trace data from: {trace_file}")
             logger.info(f"  - {len(self.agents)} agents")
             logger.info(f"  - {len(self.chat_messages)} messages")
             logger.info(f"  - {len(self.tool_executions)} tool executions")
+            if "llm_stats" in trace_data:
+                logger.info(f"  - LLM stats: cost=${self._persisted_llm_stats.get('cost', 0.0):.4f}")
         except Exception as e:
             logger.warning(f"Failed to load trace data: {e}")
 
