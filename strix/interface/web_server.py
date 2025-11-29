@@ -1,6 +1,7 @@
 """Web server for Strix web interface."""
 
 import asyncio
+import functools
 import json
 import logging
 import queue
@@ -245,11 +246,11 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
     """Create a new scan."""
     scan_manager = ScanManager.get_instance()
 
-    # Process targets
+    # Process targets (infer_target_type pode fazer I/O de arquivo)
     targets_info = []
     for target in request.targets:
         try:
-            target_type, target_dict = infer_target_type(target)
+            target_type, target_dict = await asyncio.to_thread(infer_target_type, target)
             display_target = (
                 target_dict.get("target_path", target)
                 if target_type == "local_code"
@@ -261,29 +262,33 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid target '{target}': {e}") from e
 
-    assign_workspace_subdirs(targets_info)
+    # assign_workspace_subdirs pode fazer operações de sistema de arquivos
+    await asyncio.to_thread(assign_workspace_subdirs, targets_info)
 
     # Generate run name if not provided
-    run_name = request.run_name or generate_run_name(targets_info)
+    run_name = request.run_name or await asyncio.to_thread(generate_run_name, targets_info)
 
-    # Clone repositories if needed
+    # Clone repositories if needed (clone_repository usa subprocess.run - muito bloqueante)
     for target_info in targets_info:
         if target_info["type"] == "repository":
             repo_url = target_info["details"]["target_repo"]
             dest_name = target_info["details"].get("workspace_subdir")
-            cloned_path = clone_repository(repo_url, run_name, dest_name)
+            cloned_path = await asyncio.to_thread(clone_repository, repo_url, run_name, dest_name)
             target_info["details"]["cloned_repo_path"] = cloned_path
 
     # Collect local sources
-    local_sources = collect_local_sources(targets_info)
+    local_sources = await asyncio.to_thread(collect_local_sources, targets_info)
 
-    # Create scan
-    scan_id = scan_manager.create_scan(
-        targets=targets_info,
-        user_instructions=request.user_instructions,
-        run_name=run_name,
-        max_iterations=request.max_iterations,
-        local_sources=local_sources,
+    # Create scan (create_scan cria StrixAgent que pode fazer operações bloqueantes)
+    scan_id = await asyncio.to_thread(
+        functools.partial(
+            scan_manager.create_scan,
+            targets=targets_info,
+            user_instructions=request.user_instructions,
+            run_name=run_name,
+            max_iterations=request.max_iterations,
+            local_sources=local_sources,
+        )
     )
 
     scan_info = scan_manager.get_scan(scan_id)
