@@ -362,6 +362,17 @@ async def delete_scan(scan_id: str) -> dict[str, Any]:
     return {"success": True, "message": f"Scan {scan_id} deleted successfully"}
 
 
+def _transform_agents(agents_dict: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Transform agents dict to ensure agent_id field exists."""
+    transformed = {}
+    for agent_id, agent_data in agents_dict.items():
+        transformed_agent = dict(agent_data)
+        if "id" in transformed_agent and "agent_id" not in transformed_agent:
+            transformed_agent["agent_id"] = transformed_agent["id"]
+        transformed[agent_id] = transformed_agent
+    return transformed
+
+
 @app.get("/api/scans/{scan_id}/agents")
 async def get_scan_agents(scan_id: str) -> dict[str, Any]:
     """Get all agents for a specific scan."""
@@ -370,7 +381,7 @@ async def get_scan_agents(scan_id: str) -> dict[str, Any]:
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
-    return {"agents": scan_info.tracer.agents}
+    return {"agents": _transform_agents(scan_info.tracer.agents)}
 
 
 @app.get("/api/scans/{scan_id}/agents/{agent_id}")
@@ -384,7 +395,11 @@ async def get_scan_agent(scan_id: str, agent_id: str) -> dict[str, Any]:
     if agent_id not in scan_info.tracer.agents:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
-    return scan_info.tracer.agents[agent_id]
+    agent_data = dict(scan_info.tracer.agents[agent_id])
+    if "id" in agent_data and "agent_id" not in agent_data:
+        agent_data["agent_id"] = agent_data["id"]
+
+    return agent_data
 
 
 @app.get("/api/scans/{scan_id}/agents/{agent_id}/messages")
@@ -524,7 +539,7 @@ async def get_agents() -> dict[str, Any]:
     if not tracer:
         return {"agents": {}}
 
-    return {"agents": tracer.agents}
+    return {"agents": _transform_agents(tracer.agents)}
 
 
 @app.get("/api/agents/{agent_id}")
@@ -537,7 +552,11 @@ async def get_agent(agent_id: str) -> dict[str, Any]:
     if agent_id not in tracer.agents:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
-    return tracer.agents[agent_id]
+    agent_data = dict(tracer.agents[agent_id])
+    if "id" in agent_data and "agent_id" not in agent_data:
+        agent_data["agent_id"] = agent_data["id"]
+
+    return agent_data
 
 
 @app.get("/api/agents/{agent_id}/messages")
@@ -702,7 +721,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "type": "initial_state",
                     "scan_id": scan_id,
                     "data": {
-                        "agents": scan_info.tracer.agents,
+                        "agents": _transform_agents(scan_info.tracer.agents),
                         "vulnerabilities": scan_info.tracer.vulnerability_reports,
                         "stats": {
                             "agents": len(scan_info.tracer.agents),
@@ -732,7 +751,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 {
                     "type": "initial_state",
                     "data": {
-                        "agents": tracer.agents,
+                        "agents": _transform_agents(tracer.agents),
                         "vulnerabilities": tracer.vulnerability_reports,
                         "stats": {
                             "agents": len(tracer.agents),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import type { Scan } from '@/types';
 import { DeleteScanModal } from './DeleteScanModal';
@@ -14,6 +14,14 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (isDeleting) {
+        setIsDeleting(false);
+      }
+    };
+  }, [isDeleting]);
+
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -22,11 +30,10 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
 
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
+    setShowDeleteModal(false);
     try {
       await onDelete(scan.scan_id);
-      setShowDeleteModal(false);
     } catch (error) {
-    } finally {
       setIsDeleting(false);
     }
   };
@@ -74,9 +81,35 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
     ? scan.targets.map((t) => t.original || (t.details as { target_url?: string; target_repo?: string })?.target_url || (t.details as { target_url?: string; target_repo?: string })?.target_repo || 'Unknown').join(', ')
     : 'No targets';
 
-  return (
-    <Link href={`/scan/${scan.scan_id}`}>
-      <div className="bg-bg-secondary border border-border-color rounded-lg p-6 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:border-primary-green">
+  const cardContent = (
+    <div className={`bg-bg-secondary border border-border-color rounded-lg p-6 transition-all relative ${isDeleting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:border-primary-green'}`}>
+      {isDeleting && (
+        <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center z-10">
+          <div className="flex flex-col items-center gap-3">
+            <svg
+              className="animate-spin h-8 w-8 text-warning"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span className="text-warning font-semibold text-sm">Deletando scan...</span>
+          </div>
+        </div>
+      )}
         <div className="flex justify-between items-start mb-4">
           <div className="text-lg font-semibold text-text-primary flex-1">
             {scan.run_name || scan.scan_id}
@@ -87,7 +120,8 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
             </span>
             <button
               onClick={handleDeleteClick}
-              className="bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors hover:text-error hover:bg-error/10"
+              disabled={isDeleting}
+              className="bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors hover:text-error hover:bg-error/10 disabled:opacity-50 disabled:cursor-not-allowed"
               title="Delete scan"
             >
               🗑️
@@ -126,6 +160,19 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
           </div>
         </div>
       </div>
+    );
+
+  return (
+    <>
+      {isDeleting ? (
+        <div className="relative">
+          {cardContent}
+        </div>
+      ) : (
+        <Link href={`/scan/${scan.scan_id}`}>
+          {cardContent}
+        </Link>
+      )}
       {showDeleteModal && (
         <DeleteScanModal
           scanId={scan.scan_id}
@@ -135,7 +182,7 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
           onCancel={handleCancelDelete}
         />
       )}
-    </Link>
+    </>
   );
 }
 
