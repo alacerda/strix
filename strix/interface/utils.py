@@ -447,7 +447,7 @@ def clone_repository(repo_url: str, run_name: str, dest_name: str | None = None)
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX CLONE ERROR",
+            title="[bold red]🛡️  INTRUDER CLONE ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),
@@ -466,7 +466,7 @@ def clone_repository(repo_url: str, run_name: str, dest_name: str | None = None)
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX CLONE ERROR",
+            title="[bold red]🛡️  INTRUDER CLONE ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),
@@ -494,7 +494,7 @@ def check_docker_connection() -> Any:
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX STARTUP ERROR",
+            title="[bold red]🛡️  INTRUDER STARTUP ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),

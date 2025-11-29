@@ -16,7 +16,9 @@ export function useAgents(scanId: string) {
       const data = await api.agents.list(scanId);
       setAgents(data.agents);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to load agents'));
+      const error = err instanceof Error ? err : new Error('Failed to load agents');
+      console.error(`Error loading agents for scan ${scanId}:`, error);
+      setError(error);
     } finally {
       setLoading(false);
     }

@@ -47,11 +47,11 @@ class TerminalSession:
 
     @property
     def PS1(self) -> str:  # noqa: N802
-        return r"[STRIX_$?]$ "
+        return r"[INTRUDER]$ "
 
     @property
     def PS1_PATTERN(self) -> str:  # noqa: N802
-        return r"\[STRIX_(\d+)\]"
+        return r"\[INTRUDER\]"
 
     def initialize(self) -> None:
         self.server = libtmux.Server()

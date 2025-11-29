@@ -149,7 +149,7 @@ def validate_environment() -> None:  # noqa: PLR0912, PLR0915
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX CONFIGURATION ERROR",
+            title="[bold red]🛡️  INTRUDER CONFIGURATION ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),
@@ -175,7 +175,7 @@ def check_docker_installed() -> None:
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX STARTUP ERROR",
+            title="[bold red]🛡️  INTRUDER STARTUP ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),
@@ -229,7 +229,7 @@ async def warm_up_llm() -> None:
 
         panel = Panel(
             error_text,
-            title="[bold red]🛡️  STRIX STARTUP ERROR",
+            title="[bold red]🛡️  INTRUDER STARTUP ERROR",
             title_align="center",
             border_style="red",
             padding=(1, 2),
@@ -450,7 +450,7 @@ def display_completion_message(args: argparse.Namespace, results_path: Path) -> 
 
     panel = Panel(
         panel_content,
-        title="[bold green]🛡️  STRIX CYBERSECURITY AGENT",
+        title="[bold green]🛡️  INTRUDER CYBERSECURITY AGENT",
         title_align="center",
         border_style=border_style,
         padding=(1, 2),

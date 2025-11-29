@@ -246,8 +246,6 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
     """Create a new scan."""
     scan_manager = ScanManager.get_instance()
 
-    broadcast_status_message(None, "Creating scan...")
-
     # Process targets
     targets_info = []
     for target in request.targets:
@@ -280,8 +278,6 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
     # Collect local sources
     local_sources = collect_local_sources(targets_info)
 
-    broadcast_status_message(None, "Preparing scan environment...")
-
     # Create scan
     scan_id = scan_manager.create_scan(
         targets=targets_info,
@@ -291,8 +287,6 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
         local_sources=local_sources,
     )
 
-    broadcast_status_message(scan_id, "Scan created. Initializing agents...")
-    
     scan_info = scan_manager.get_scan(scan_id)
     if scan_info:
         await websocket_manager.broadcast(
@@ -300,8 +294,6 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
             scan_info.to_dict(),
             scan_id,
         )
-
-    broadcast_status_message(scan_id, "Starting container...")
 
     asyncio.create_task(scan_manager.start_scan(scan_id))
 
@@ -838,19 +830,6 @@ def broadcast_stats(scan_id: str, stats: dict[str, Any]) -> None:
     _event_queue.put({"type": "stats_updated", "scan_id": scan_id, "data": stats})
 
 
-def broadcast_status_message(scan_id: str | None, message: str) -> None:
-    """Broadcast status message event (thread-safe)."""
-    import time
-    _event_queue.put({
-        "type": "status_message",
-        "scan_id": scan_id,
-        "data": {
-            "message": message,
-            "timestamp": time.time()
-        }
-    })
-
-
 # Legacy broadcasting functions (for backward compatibility with single-scan mode)
 def broadcast_agent_created_legacy(agent_id: str, agent_data: dict[str, Any]) -> None:
     """Broadcast agent creation event (legacy, no scan_id)."""
@@ -880,16 +859,4 @@ def broadcast_vulnerability_legacy(report_id: str, vuln_data: dict[str, Any]) ->
 def broadcast_stats_legacy(stats: dict[str, Any]) -> None:
     """Broadcast stats update event (legacy, no scan_id)."""
     _event_queue.put({"type": "stats_updated", "data": stats})
-
-
-def broadcast_status_message_legacy(message: str) -> None:
-    """Broadcast status message event (legacy, no scan_id)."""
-    import time
-    _event_queue.put({
-        "type": "status_message",
-        "data": {
-            "message": message,
-            "timestamp": time.time()
-        }
-    })
 

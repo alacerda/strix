@@ -187,12 +187,6 @@ class ScanManager:
         scan_info.start_time = datetime.now(UTC).isoformat()
         scan_info.save_metadata()
 
-        try:
-            from strix.interface.web_server import broadcast_status_message
-            broadcast_status_message(scan_id, "Scan started. Setting up monitoring...")
-        except Exception:
-            pass
-
         # Setup periodic stats updates for this scan
         def update_stats_periodically() -> None:
             import time
@@ -226,7 +220,6 @@ class ScanManager:
             broadcast_agent_updated,
             broadcast_message,
             broadcast_stats,
-            broadcast_status_message,
             broadcast_tool_execution,
             broadcast_vulnerability,
         )
@@ -247,10 +240,6 @@ class ScanManager:
             agent_data = scan_info.tracer.agents.get(agent_id, {})
             try:
                 broadcast_agent_created(scan_id, agent_id, agent_data)
-                if len(scan_info.tracer.agents) == 1:
-                    broadcast_status_message(scan_id, f"Agent '{name}' created and ready.")
-                else:
-                    broadcast_status_message(scan_id, f"Agent '{name}' created.")
             except Exception:
                 pass
 
@@ -345,21 +334,11 @@ class ScanManager:
         scan_info.tracer.update_tool_execution = wrapped_update_tool_execution
         scan_info.tracer.add_vulnerability_report = wrapped_add_vulnerability_report
 
-        try:
-            broadcast_status_message(scan_id, "Monitoring configured. Starting agent execution...")
-        except Exception:
-            pass
-
         # Start scan in background task
         async def run_scan():
             previous_tracer = get_global_tracer()
             set_global_tracer(scan_info.tracer)
             try:
-                try:
-                    from strix.interface.web_server import broadcast_status_message
-                    broadcast_status_message(scan_id, "Agent started. Ready to begin scan.")
-                except Exception:
-                    pass
                 await scan_info.agent.execute_scan(scan_info.scan_config)
                 scan_info.status = "completed"
                 scan_info.end_time = datetime.now(UTC).isoformat()

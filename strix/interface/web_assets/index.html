@@ -904,6 +904,19 @@
             color: var(--text-primary);
         }
 
+        .modal-button-danger {
+            background: var(--error);
+            color: white;
+        }
+
+        .modal-button-danger:hover {
+            background: #b91c1c;
+        }
+
+        .modal-body {
+            margin-bottom: 1.5rem;
+        }
+
         /* Scan View (existing interface) */
         .scan-view {
             display: none;
@@ -1239,6 +1252,35 @@
         </div>
     </div>
 
+    <!-- Delete Scan Confirmation Modal -->
+    <div class="modal-overlay" id="deleteScanModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Delete Scan</h2>
+                <button class="modal-close" id="closeDeleteModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                    Are you sure you want to delete scan "<span id="deleteScanName"></span>"?
+                </p>
+                <div style="color: var(--text-secondary); margin-bottom: 1rem;">
+                    <p style="margin-bottom: 0.5rem;">This will permanently delete:</p>
+                    <ul style="list-style: disc; list-position: inside; margin-left: 1rem; margin-bottom: 1rem;">
+                        <li>All scan data and files</li>
+                        <li>Associated Docker containers</li>
+                    </ul>
+                    <p style="color: var(--error); font-weight: 600; margin-top: 1rem;">
+                        This action cannot be undone.
+                    </p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-button modal-button-secondary" id="cancelDeleteScan">Cancel</button>
+                <button type="button" class="modal-button modal-button-danger" id="confirmDeleteScan">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scan View (existing interface) -->
     <div class="app-container scan-view" id="scanView">
         <!-- Left Sidebar - Agents -->
@@ -1342,7 +1384,6 @@
             selectedAgentId: null,
             messages: {},
             toolExecutions: {},
-            statusMessages: {},
             vulnerabilities: [],
             stats: {
                 agents: 0,
@@ -1414,23 +1455,34 @@
             }
         }
 
-        async function deleteScan(scanId) {
+        let pendingDeleteScanId = null;
+
+        function showDeleteScanModal(scanId) {
             if (!scanId) {
                 console.error('No scan ID provided for deletion');
                 return;
             }
 
-            const confirmed = confirm(
-                `Are you sure you want to delete scan "${scanId}"?\n\n` +
-                `This will permanently delete:\n` +
-                `- All scan data and files\n` +
-                `- Associated Docker containers\n\n` +
-                `This action cannot be undone.`
-            );
+            const scan = appState.scans.find(s => s.scan_id === scanId);
+            const scanName = scan ? (scan.run_name || scan.scan_id) : scanId;
+            
+            document.getElementById('deleteScanName').textContent = scanName;
+            pendingDeleteScanId = scanId;
+            document.getElementById('deleteScanModal').classList.add('active');
+        }
 
-            if (!confirmed) {
+        function hideDeleteScanModal() {
+            document.getElementById('deleteScanModal').classList.remove('active');
+            pendingDeleteScanId = null;
+        }
+
+        async function confirmDeleteScan() {
+            if (!pendingDeleteScanId) {
                 return;
             }
+
+            const scanId = pendingDeleteScanId;
+            hideDeleteScanModal();
 
             const deleteStartTime = Date.now();
             console.log(`[deleteScan] Iniciando deleção do scan ${scanId} em ${new Date().toISOString()}`);
@@ -1521,9 +1573,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     console.log(`[deleteButton] Clique no botão de deletar para scan ${scan.scan_id} em ${new Date().toISOString()}`);
-                    deleteScan(scan.scan_id).catch(err => {
-                        console.error('[deleteButton] Erro não tratado na função deleteScan:', err);
-                    });
+                    showDeleteScanModal(scan.scan_id);
                 });
                 
                 headerRight.appendChild(statusBadge);
@@ -1629,6 +1679,33 @@
 
         document.getElementById('cancelCreateScan').addEventListener('click', () => {
             document.getElementById('createScanModal').classList.remove('active');
+        });
+
+        document.getElementById('closeDeleteModal').addEventListener('click', () => {
+            hideDeleteScanModal();
+        });
+
+        document.getElementById('cancelDeleteScan').addEventListener('click', () => {
+            hideDeleteScanModal();
+        });
+
+        document.getElementById('confirmDeleteScan').addEventListener('click', () => {
+            confirmDeleteScan();
+        });
+
+        document.getElementById('deleteScanModal').addEventListener('click', (e) => {
+            if (e.target.id === 'deleteScanModal') {
+                hideDeleteScanModal();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const deleteModal = document.getElementById('deleteScanModal');
+                if (deleteModal && deleteModal.classList.contains('active')) {
+                    hideDeleteScanModal();
+                }
+            }
         });
 
         function addTargetInput() {
@@ -1880,11 +1957,8 @@
         }
 
         function handleWebSocketMessage(message) {
-            // For status messages, be more lenient - accept messages for current scan or pending scan
-            const isStatusMessage = message.type === 'status_message';
-            
-            // Filter by scan_id if we're viewing a specific scan (except for status messages)
-            if (!isStatusMessage && appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
+            // Filter by scan_id if we're viewing a specific scan
+            if (appState.currentScanId && message.scan_id && message.scan_id !== appState.currentScanId) {
                 return; // Ignore events from other scans
             }
 
@@ -2045,25 +2119,6 @@
                     break;
                 case 'stats_updated':
                     updateStatsFromData(message.data);
-                    break;
-                case 'status_message':
-                    const statusScanId = message.scan_id || appState.currentScanId || 'global';
-                    if (!appState.statusMessages[statusScanId]) {
-                        appState.statusMessages[statusScanId] = [];
-                    }
-                    appState.statusMessages[statusScanId].push({
-                        message: message.data.message,
-                        timestamp: new Date((message.data.timestamp || Date.now() / 1000) * 1000)
-                    });
-                    // Show status message if:
-                    // 1. It's for the current scan, OR
-                    // 2. It's a global message (no scan_id) and we have a current scan, OR
-                    // 3. We're about to view this scan (scan_id matches but currentScanId not set yet)
-                    if (statusScanId === appState.currentScanId || 
-                        (!message.scan_id && appState.currentScanId) ||
-                        (message.scan_id && !appState.currentScanId && window.location.hash.includes(message.scan_id))) {
-                        renderChatMessages();
-                    }
                     break;
             }
         }
@@ -2266,16 +2321,6 @@
                     return;
                 }
                 
-                const statusMessages = appState.statusMessages[appState.currentScanId] || [];
-                if (statusMessages.length > 0) {
-                    statusMessages.forEach(statusMsg => {
-                        const statusEl = createStatusMessageElement(statusMsg);
-                        container.appendChild(statusEl);
-                    });
-                    container.scrollTop = container.scrollHeight;
-                    return;
-                }
-                
                 const emptyState = document.createElement('div');
                 emptyState.className = 'empty-state';
                 
@@ -2334,24 +2379,6 @@
             
             const content = document.createElement('div');
             content.textContent = message.content;
-            div.appendChild(content);
-            
-            return div;
-        }
-
-        function createStatusMessageElement(statusMsg) {
-            const div = document.createElement('div');
-            div.className = 'message status-message';
-            
-            const time = formatTime(statusMsg.timestamp);
-            
-            const header = document.createElement('div');
-            header.className = 'message-header';
-            header.textContent = `Status • ${time}`;
-            div.appendChild(header);
-            
-            const content = document.createElement('div');
-            content.textContent = statusMsg.message;
             div.appendChild(content);
             
             return div;

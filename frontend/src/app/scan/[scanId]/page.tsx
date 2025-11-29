@@ -25,7 +25,7 @@ export default function ScanDetailPage() {
   const [selectedVulnerability, setSelectedVulnerability] = useState<Vulnerability | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { agents, messages, toolExecutions, loadAgentData, sendMessage, stopAgent } = useAgents(scanId);
+  const { agents, messages, toolExecutions, loadAgentData, sendMessage, stopAgent, loadAgents } = useAgents(scanId);
   const { vulnerabilities, loadVulnerabilities } = useVulnerabilities(scanId);
   const { on, connected } = useWebSocket(scanId);
 
@@ -63,20 +63,38 @@ export default function ScanDetailPage() {
   useEffect(() => {
     if (selectedAgentId) {
       loadAgentData(selectedAgentId);
+    } else if (Object.keys(agents).length > 0) {
+      const firstAgentId = Object.keys(agents)[0];
+      setSelectedAgentId(firstAgentId);
     }
-  }, [selectedAgentId, loadAgentData]);
+  }, [selectedAgentId, loadAgentData, agents]);
 
   useEffect(() => {
+    const unsubscribeInitialState = on('initial_state', (message: WebSocketMessage) => {
+      if (message.scan_id === scanId && message.data) {
+        if (message.data.agents && typeof message.data.agents === 'object') {
+          loadAgents();
+        }
+        if (message.data.stats && typeof message.data.stats === 'object') {
+          setStats(message.data.stats as Stats);
+        }
+        if (message.data.vulnerabilities && Array.isArray(message.data.vulnerabilities)) {
+          loadVulnerabilities();
+        }
+      }
+    });
+
     const unsubscribeAgentCreated = on('agent_created', (message: WebSocketMessage) => {
       if (message.scan_id === scanId && message.data && 'agent_id' in message.data) {
         const agentData = message.data as unknown as Agent;
         setSelectedAgentId((prev) => prev || agentData.agent_id);
+        loadAgents();
       }
     });
 
     const unsubscribeAgentUpdated = on('agent_updated', (message: WebSocketMessage) => {
       if (message.scan_id === scanId) {
-        window.location.reload();
+        loadAgents();
       }
     });
 
@@ -111,6 +129,7 @@ export default function ScanDetailPage() {
     });
 
     return () => {
+      unsubscribeInitialState();
       unsubscribeAgentCreated();
       unsubscribeAgentUpdated();
       unsubscribeMessage();
@@ -118,7 +137,7 @@ export default function ScanDetailPage() {
       unsubscribeVulnerability();
       unsubscribeStats();
     };
-  }, [scanId, selectedAgentId, on, loadAgentData, loadVulnerabilities]);
+  }, [scanId, selectedAgentId, on, loadAgentData, loadAgents, loadVulnerabilities]);
 
   const handleSelectAgent = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);

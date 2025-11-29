@@ -130,11 +130,6 @@ class DockerRuntime(AbstractRuntime):
 
                 self._scan_containers[scan_id] = container
                 logger.info("Created container %s for scan %s", container.id, scan_id)
-                try:
-                    from strix.interface.web_server import broadcast_status_message
-                    broadcast_status_message(scan_id, "Container created. Initializing services...")
-                except Exception:
-                    pass
 
                 self._initialize_container(
                     container, scan_id, caido_port, tool_server_port, tool_server_token
@@ -251,11 +246,6 @@ class DockerRuntime(AbstractRuntime):
             logger.warning("Failed to find existing container by label for scan %s: %s", scan_id, e)
 
         logger.info("Creating new Docker container for scan %s", scan_id)
-        try:
-            from strix.interface.web_server import broadcast_status_message
-            broadcast_status_message(scan_id, "Starting container. Please wait...")
-        except Exception:
-            pass
         return self._create_container_with_retry(scan_id)
 
     def _initialize_container(
@@ -284,11 +274,6 @@ class DockerRuntime(AbstractRuntime):
         )
 
         time.sleep(5)
-        try:
-            from strix.interface.web_server import broadcast_status_message
-            broadcast_status_message(scan_id, "Container ready. Starting agent...")
-        except Exception:
-            pass
 
     def _copy_local_directory_to_container(
         self, container: Container, local_path: str, target_name: str | None = None

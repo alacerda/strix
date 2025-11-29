@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import type { Scan } from '@/types';
+import { DeleteScanModal } from './DeleteScanModal';
 
 interface ScanCardProps {
   scan: Scan;
@@ -9,12 +11,21 @@ interface ScanCardProps {
 }
 
 export function ScanCard({ scan, onDelete }: ScanCardProps) {
-  const handleDelete = (e: React.MouseEvent) => {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm(`Are you sure you want to delete scan "${scan.scan_id}"?\n\nThis will permanently delete all scan data and files. This action cannot be undone.`)) {
-      onDelete(scan.scan_id);
-    }
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(scan.scan_id);
+    setShowDeleteModal(false);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -66,7 +77,7 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
               {scan.status}
             </span>
             <button
-              onClick={handleDelete}
+              onClick={handleDeleteClick}
               className="bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors hover:text-error hover:bg-error/10"
               title="Delete scan"
             >
@@ -106,6 +117,14 @@ export function ScanCard({ scan, onDelete }: ScanCardProps) {
           </div>
         </div>
       </div>
+      {showDeleteModal && (
+        <DeleteScanModal
+          scanId={scan.scan_id}
+          scanName={scan.run_name || scan.scan_id}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
+      )}
     </Link>
   );
 }

@@ -22,7 +22,7 @@ async def run_cli(args: Any) -> None:  # noqa: PLR0915
 
     start_text = Text()
     start_text.append("🦉 ", style="bold white")
-    start_text.append("STRIX CYBERSECURITY AGENT", style="bold green")
+    start_text.append("INTRUDER CYBERSECURITY AGENT", style="bold green")
 
     target_text = Text()
     if len(args.targets_info) == 1:
@@ -56,7 +56,7 @@ async def run_cli(args: Any) -> None:  # noqa: PLR0915
             results_text,
             note_text,
         ),
-        title="[bold green]🛡️  STRIX PENETRATION TEST INITIATED",
+        title="[bold green]🛡️  INTRUDER PENETRATION TEST INITIATED",
         title_align="center",
         border_style="green",
         padding=(1, 2),
