@@ -163,21 +163,46 @@ app = FastAPI(title="Strix Web Interface", version="0.4.0", lifespan=lifespan)
 
 # Static files will be mounted after app creation
 _web_assets_path: Path | None = None
+_nextjs_build_path: Path | None = None
 
 
 def setup_static_files(web_assets_path: Path) -> None:
     """Setup static files serving."""
-    global _web_assets_path
+    global _web_assets_path, _nextjs_build_path
     _web_assets_path = web_assets_path
 
-    static_dir = web_assets_path / "static"
-    if web_assets_path.exists() and static_dir.exists():
-        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    # Check for Next.js build
+    project_root = Path(__file__).parent.parent.parent.parent
+    nextjs_build = project_root / "frontend" / ".next"
+    nextjs_standalone = nextjs_build / "standalone"
+    
+    if nextjs_standalone.exists():
+        _nextjs_build_path = nextjs_standalone
+        # Serve Next.js static files
+        nextjs_static = nextjs_build / "static"
+        if nextjs_static.exists():
+            app.mount("/_next/static", StaticFiles(directory=str(nextjs_static)), name="nextjs-static")
+        # Serve other Next.js assets from standalone
+        standalone_next = nextjs_standalone / "_next"
+        if standalone_next.exists():
+            app.mount("/_next", StaticFiles(directory=str(standalone_next)), name="nextjs")
+    else:
+        # Fallback to legacy static files
+        static_dir = web_assets_path / "static"
+        if web_assets_path.exists() and static_dir.exists():
+            app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.get("/")
 async def serve_index() -> FileResponse:
-    """Serve the main HTML file."""
+    """Serve the main HTML file (Next.js or legacy)."""
+    # Try Next.js build first
+    if _nextjs_build_path:
+        nextjs_html = _nextjs_build_path / "index.html"
+        if nextjs_html.exists():
+            return FileResponse(str(nextjs_html))
+    
+    # Fallback to legacy HTML
     if _web_assets_path is None:
         raise HTTPException(status_code=500, detail="Web assets not configured")
 

@@ -1,10 +1,15 @@
-.PHONY: help install dev-install format lint type-check test test-cov clean pre-commit setup-dev
+.PHONY: help install dev-install format lint type-check test test-cov clean pre-commit setup-dev run-all
 
 help:
 	@echo "Available commands:"
 	@echo "  setup-dev     - Install all development dependencies and setup pre-commit"
-	@echo "  install       - Install production dependencies"
+	@echo "  install       - Install all dependencies (backend and frontend)"
 	@echo "  dev-install   - Install development dependencies"
+	@echo ""
+	@echo "Running:"
+	@echo "  run-all       - Run both backend and frontend servers"
+	@echo "  run-server    - Run backend server only"
+	@echo "  frontend-dev  - Run frontend development server only"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  format        - Format code with ruff"
@@ -22,12 +27,36 @@ help:
 	@echo "  clean         - Clean up cache files and artifacts"
 
 install:
+	@echo "Instalando dependências do backend..."
 	poetry install --only=main
 	pipx install . --force
+	@echo "Instalando dependências do frontend..."
+	cd frontend && npm install
+	@echo "Instalação completa!"
 
 run-server:
 	poetry install
 	poetry run python -m strix.interface.main --server --web-port 8000
+
+frontend-dev:
+	cd frontend && npm run dev
+
+run-all:
+	@echo "Iniciando backend e frontend..."
+	@echo "Backend estará disponível em http://127.0.0.1:8000"
+	@echo "Frontend estará disponível em http://localhost:3000"
+	@echo "Pressione Ctrl+C para parar ambos os servidores"
+	@poetry install
+	@bash -c 'trap "kill 0" EXIT INT TERM; \
+	poetry run python -m strix.interface.main --server --web-port 8000 & \
+	cd frontend && npm run dev & \
+	wait'
+
+frontend-build:
+	cd frontend && npm install && npm run build
+
+frontend-install:
+	cd frontend && npm install
 
 dev-install:
 	poetry install --with=dev

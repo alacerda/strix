@@ -1397,6 +1397,8 @@
             
             appState.currentScanId = scanId;
             document.getElementById('scanIdDisplay').textContent = scanId;
+            renderAgentsTree();
+            renderChatMessages();
             loadScanData(scanId);
         }
 
@@ -1418,7 +1420,6 @@
                 return;
             }
 
-            // Show confirmation dialog
             const confirmed = confirm(
                 `Are you sure you want to delete scan "${scanId}"?\n\n` +
                 `This will permanently delete:\n` +
@@ -1431,10 +1432,19 @@
                 return;
             }
 
+            const deleteStartTime = Date.now();
+            console.log(`[deleteScan] Iniciando deleção do scan ${scanId} em ${new Date().toISOString()}`);
+
             try {
+                const fetchStartTime = Date.now();
+                console.log(`[deleteScan] Enviando requisição DELETE para /api/scans/${scanId} em ${new Date().toISOString()}`);
+                
                 const response = await fetch(`/api/scans/${scanId}`, {
                     method: 'DELETE',
                 });
+
+                const fetchEndTime = Date.now();
+                console.log(`[deleteScan] Requisição enviada e resposta recebida em ${fetchEndTime - fetchStartTime}ms`);
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
@@ -1442,17 +1452,17 @@
                 }
 
                 const data = await response.json();
-                console.log('Scan deleted:', data);
+                const totalTime = Date.now() - deleteStartTime;
+                console.log(`[deleteScan] Scan deletado com sucesso em ${totalTime}ms:`, data);
 
-                // If we're viewing the deleted scan, go back to list view
                 if (appState.currentScanId === scanId) {
                     showScansList();
                 }
 
-                // Reload scans list
                 await loadScans();
             } catch (error) {
-                console.error('Error deleting scan:', error);
+                const totalTime = Date.now() - deleteStartTime;
+                console.error(`[deleteScan] Erro ao deletar scan após ${totalTime}ms:`, error);
                 alert(`Failed to delete scan: ${error.message}`);
             }
         }
@@ -1503,12 +1513,17 @@
                 statusBadge.textContent = scan.status;
                 
                 const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
                 deleteButton.className = 'scan-card-delete-button';
                 deleteButton.textContent = '🗑️';
                 deleteButton.title = 'Delete scan';
                 deleteButton.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    deleteScan(scan.scan_id);
+                    console.log(`[deleteButton] Clique no botão de deletar para scan ${scan.scan_id} em ${new Date().toISOString()}`);
+                    deleteScan(scan.scan_id).catch(err => {
+                        console.error('[deleteButton] Erro não tratado na função deleteScan:', err);
+                    });
                 });
                 
                 headerRight.appendChild(statusBadge);
@@ -1763,6 +1778,13 @@
                 renderVulnerabilities();
                 renderSeverityBreakdown();
                 renderStats();
+                
+                if (Object.keys(appState.agents).length > 0 && !appState.selectedAgentId) {
+                    const firstAgentId = Object.keys(appState.agents)[0];
+                    selectAgent(firstAgentId);
+                } else {
+                    renderChatMessages();
+                }
             } catch (error) {
                 console.error(`Error loading data for scan ${scanId}:`, error);
             }
@@ -1927,7 +1949,7 @@
                 case 'agent_created':
                     if (message.data.agent_id && (!appState.currentScanId || message.scan_id === appState.currentScanId)) {
                         const agentId = message.data.agent_id;
-                        // Add agent to state
+                        const isFirstAgent = Object.keys(appState.agents).length === 0;
                         appState.agents[agentId] = {
                             id: agentId,
                             name: message.data.name || 'Agent',
@@ -1938,7 +1960,9 @@
                         };
                         renderAgentsTree();
                         renderChatMessages();
-                        // Load agent data asynchronously
+                        if (isFirstAgent && !appState.selectedAgentId) {
+                            selectAgent(agentId);
+                        }
                         if (appState.currentScanId) {
                             loadAgentData(appState.currentScanId, agentId);
                         }
