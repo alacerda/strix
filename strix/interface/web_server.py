@@ -241,9 +241,64 @@ async def list_scans() -> dict[str, Any]:
     return {"scans": scans}
 
 
+async def _prepare_scan_background(
+    scan_id: str,
+    targets_info: list[dict[str, Any]],
+    run_name: str,
+    user_instructions: str,
+    max_iterations: int,
+) -> None:
+    """Prepare scan in background (clone repos, create agent, etc.)."""
+    scan_manager = ScanManager.get_instance()
+    
+    try:
+        # Clone repositories if needed (clone_repository usa subprocess.run - muito bloqueante)
+        for target_info in targets_info:
+            if target_info["type"] == "repository":
+                repo_url = target_info["details"]["target_repo"]
+                dest_name = target_info["details"].get("workspace_subdir")
+                cloned_path = await asyncio.to_thread(clone_repository, repo_url, run_name, dest_name)
+                target_info["details"]["cloned_repo_path"] = cloned_path
+
+        # Collect local sources
+        local_sources = await asyncio.to_thread(collect_local_sources, targets_info)
+
+        # Complete scan preparation (creates StrixAgent)
+        await asyncio.to_thread(
+            scan_manager.complete_scan_preparation,
+            scan_id=scan_id,
+            local_sources=local_sources,
+        )
+
+        # Broadcast scan created event
+        scan_info = scan_manager.get_scan(scan_id)
+        if scan_info:
+            await websocket_manager.broadcast(
+                "scan_created",
+                scan_info.to_dict(),
+                scan_id,
+            )
+
+        # Start scan execution
+        asyncio.create_task(scan_manager.start_scan(scan_id))
+        
+    except Exception as e:
+        logger.error(f"Error preparing scan {scan_id} in background: {e}", exc_info=True)
+        scan_info = scan_manager.get_scan(scan_id)
+        if scan_info:
+            scan_info.status = "failed"
+            scan_info.error = str(e)
+            scan_info.save_metadata()
+            await websocket_manager.broadcast(
+                "scan_updated",
+                scan_info.to_dict(),
+                scan_id,
+            )
+
+
 @app.post("/api/scans")
 async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
-    """Create a new scan."""
+    """Create a new scan (returns immediately, preparation happens in background)."""
     scan_manager = ScanManager.get_instance()
 
     # Process targets (infer_target_type pode fazer I/O de arquivo)
@@ -268,43 +323,31 @@ async def create_scan(request: CreateScanRequest) -> dict[str, Any]:
     # Generate run name if not provided
     run_name = request.run_name or await asyncio.to_thread(generate_run_name, targets_info)
 
-    # Clone repositories if needed (clone_repository usa subprocess.run - muito bloqueante)
-    for target_info in targets_info:
-        if target_info["type"] == "repository":
-            repo_url = target_info["details"]["target_repo"]
-            dest_name = target_info["details"].get("workspace_subdir")
-            cloned_path = await asyncio.to_thread(clone_repository, repo_url, run_name, dest_name)
-            target_info["details"]["cloned_repo_path"] = cloned_path
-
-    # Collect local sources
-    local_sources = await asyncio.to_thread(collect_local_sources, targets_info)
-
-    # Create scan (create_scan cria StrixAgent que pode fazer operações bloqueantes)
+    # Create pending scan immediately (fast, non-blocking)
     scan_id = await asyncio.to_thread(
-        functools.partial(
-            scan_manager.create_scan,
-            targets=targets_info,
-            user_instructions=request.user_instructions,
+        scan_manager.create_pending_scan,
+        targets=targets_info,
+        user_instructions=request.user_instructions,
+        run_name=run_name,
+        max_iterations=request.max_iterations,
+    )
+
+    # Start background task to prepare scan (clone repos, create agent, etc.)
+    asyncio.create_task(
+        _prepare_scan_background(
+            scan_id=scan_id,
+            targets_info=targets_info,
             run_name=run_name,
+            user_instructions=request.user_instructions,
             max_iterations=request.max_iterations,
-            local_sources=local_sources,
         )
     )
 
-    scan_info = scan_manager.get_scan(scan_id)
-    if scan_info:
-        await websocket_manager.broadcast(
-            "scan_created",
-            scan_info.to_dict(),
-            scan_id,
-        )
-
-    asyncio.create_task(scan_manager.start_scan(scan_id))
-
+    # Return immediately with pending status
     scan_info = scan_manager.get_scan(scan_id)
     if scan_info:
         return scan_info.to_dict()
-    return {"scan_id": scan_id, "status": "created"}
+    return {"scan_id": scan_id, "status": "pending"}
 
 
 @app.get("/api/scans/{scan_id}")
@@ -385,6 +428,9 @@ async def get_scan_agents(scan_id: str) -> dict[str, Any]:
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
+    if scan_info.status == "pending" or not scan_info.tracer:
+        return {"agents": {}}
+
     return {"agents": _transform_agents(scan_info.tracer.agents)}
 
 
@@ -395,6 +441,9 @@ async def get_scan_agent(scan_id: str, agent_id: str) -> dict[str, Any]:
     scan_info = scan_manager.get_scan(scan_id)
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if scan_info.status == "pending" or not scan_info.tracer:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     if agent_id not in scan_info.tracer.agents:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
@@ -414,6 +463,9 @@ async def get_scan_agent_messages(scan_id: str, agent_id: str) -> dict[str, Any]
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
+    if scan_info.status == "pending" or not scan_info.tracer:
+        return {"messages": []}
+
     messages = [
         msg for msg in scan_info.tracer.chat_messages if msg.get("agent_id") == agent_id
     ]
@@ -427,6 +479,9 @@ async def get_scan_agent_tools(scan_id: str, agent_id: str) -> dict[str, Any]:
     scan_info = scan_manager.get_scan(scan_id)
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if scan_info.status == "pending" or not scan_info.tracer:
+        return {"tools": []}
 
     tools = scan_info.tracer.get_agent_tools(agent_id)
     return {"tools": tools}
@@ -450,6 +505,19 @@ async def get_scan_stats(scan_id: str) -> dict[str, Any]:
     scan_info = scan_manager.get_scan(scan_id)
     if not scan_info:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
+
+    if scan_info.status == "pending" or not scan_info.tracer:
+        return {
+            "agents": 0,
+            "tools": 0,
+            "vulnerabilities": 0,
+            "llm_stats": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cached_tokens": 0,
+                "cost": 0.0,
+            },
+        }
 
     llm_stats = scan_info.tracer.get_total_llm_stats()
     total_stats = llm_stats.get("total", {})

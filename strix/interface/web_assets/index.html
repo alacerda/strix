@@ -1485,18 +1485,18 @@
             hideDeleteScanModal();
 
             const deleteStartTime = Date.now();
-            console.log(`[deleteScan] Iniciando deleção do scan ${scanId} em ${new Date().toISOString()}`);
+            console.log(`[deleteScan] Starting scan deletion ${scanId} at ${new Date().toISOString()}`);
 
             try {
                 const fetchStartTime = Date.now();
-                console.log(`[deleteScan] Enviando requisição DELETE para /api/scans/${scanId} em ${new Date().toISOString()}`);
+                console.log(`[deleteScan] Sending DELETE request to /api/scans/${scanId} at ${new Date().toISOString()}`);
                 
                 const response = await fetch(`/api/scans/${scanId}`, {
                     method: 'DELETE',
                 });
 
                 const fetchEndTime = Date.now();
-                console.log(`[deleteScan] Requisição enviada e resposta recebida em ${fetchEndTime - fetchStartTime}ms`);
+                console.log(`[deleteScan] Request sent and response received in ${fetchEndTime - fetchStartTime}ms`);
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
@@ -1505,7 +1505,7 @@
 
                 const data = await response.json();
                 const totalTime = Date.now() - deleteStartTime;
-                console.log(`[deleteScan] Scan deletado com sucesso em ${totalTime}ms:`, data);
+                console.log(`[deleteScan] Scan deleted successfully in ${totalTime}ms:`, data);
 
                 if (appState.currentScanId === scanId) {
                     showScansList();
@@ -1514,7 +1514,7 @@
                 await loadScans();
             } catch (error) {
                 const totalTime = Date.now() - deleteStartTime;
-                console.error(`[deleteScan] Erro ao deletar scan após ${totalTime}ms:`, error);
+                console.error(`[deleteScan] Error deleting scan after ${totalTime}ms:`, error);
                 alert(`Failed to delete scan: ${error.message}`);
             }
         }
@@ -1572,7 +1572,7 @@
                 deleteButton.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log(`[deleteButton] Clique no botão de deletar para scan ${scan.scan_id} em ${new Date().toISOString()}`);
+                    console.log(`[deleteButton] Click on delete button for scan ${scan.scan_id} at ${new Date().toISOString()}`);
                     showDeleteScanModal(scan.scan_id);
                 });
                 
@@ -1779,10 +1779,10 @@
                 }
 
                 const data = await response.json();
+                const scanId = data.scan_id;
+                
                 document.getElementById('createScanModal').classList.remove('active');
                 e.target.reset();
-                
-                const scanId = data.scan_id;
                 
                 const existingIndex = appState.scans.findIndex(s => s.scan_id === scanId);
                 if (existingIndex >= 0) {
@@ -1829,41 +1829,107 @@
                 }));
             }
 
+            // Check scan status first
+            try {
+                const scanResponse = await fetch(`/api/scans/${scanId}`).catch(err => {
+                    console.error(`Error loading scan ${scanId}:`, err);
+                    return null;
+                });
+                
+                if (scanResponse && scanResponse.ok) {
+                    const scanData = await scanResponse.json();
+                    if (scanData.status === 'pending') {
+                        // Show preparing message
+                        showPreparingScanMessage();
+                        // Poll for status update or wait for WebSocket
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error checking scan status for ${scanId}:`, error);
+            }
+
             // Load initial data
             try {
-                // Load agents
-                const agentsResponse = await fetch(`/api/scans/${scanId}/agents`);
-                const agentsData = await agentsResponse.json();
+                // Load agents, vulnerabilities, and stats in parallel
+                const [agentsResponse, vulnResponse, statsResponse] = await Promise.all([
+                    fetch(`/api/scans/${scanId}/agents`).catch(err => {
+                        console.error(`Error loading agents for scan ${scanId}:`, err);
+                        return { ok: false, json: async () => ({ agents: {} }) };
+                    }),
+                    fetch(`/api/scans/${scanId}/vulnerabilities`).catch(err => {
+                        console.error(`Error loading vulnerabilities for scan ${scanId}:`, err);
+                        return { ok: false, json: async () => ({ vulnerabilities: [] }) };
+                    }),
+                    fetch(`/api/scans/${scanId}/stats`).catch(err => {
+                        console.error(`Error loading stats for scan ${scanId}:`, err);
+                        return { ok: false, json: async () => ({ agents: 0, tools: 0, vulnerabilities: 0, llm_stats: {} }) };
+                    })
+                ]);
+
+                const [agentsData, vulnData, statsData] = await Promise.all([
+                    agentsResponse.json(),
+                    vulnResponse.json(),
+                    statsResponse.json()
+                ]);
+
                 appState.agents = agentsData.agents || {};
-
-                // Load vulnerabilities
-                const vulnResponse = await fetch(`/api/scans/${scanId}/vulnerabilities`);
-                const vulnData = await vulnResponse.json();
                 appState.vulnerabilities = vulnData.vulnerabilities || [];
-
-                // Load stats
-                const statsResponse = await fetch(`/api/scans/${scanId}/stats`);
-                const statsData = await statsResponse.json();
                 updateStatsFromData(statsData);
 
-                // Load messages and tools for each agent
-                for (const agentId of Object.keys(appState.agents)) {
-                    await loadAgentData(scanId, agentId);
-                }
-
+                // Render initial UI immediately with available data
+                hidePreparingScanMessage();
                 renderAgentsTree();
                 renderVulnerabilities();
                 renderSeverityBreakdown();
                 renderStats();
-                
-                if (Object.keys(appState.agents).length > 0 && !appState.selectedAgentId) {
-                    const firstAgentId = Object.keys(appState.agents)[0];
-                    selectAgent(firstAgentId);
+
+                // Load messages and tools for all agents in parallel
+                const agentIds = Object.keys(appState.agents);
+                if (agentIds.length > 0) {
+                    await Promise.all(
+                        agentIds.map(agentId => 
+                            loadAgentData(scanId, agentId).catch(err => {
+                                console.error(`Error loading data for agent ${agentId}:`, err);
+                            })
+                        )
+                    );
+
+                    // Re-render after loading agent data
+                    renderAgentsTree();
+                    if (appState.selectedAgentId && appState.messages[appState.selectedAgentId]) {
+                        renderChatMessages();
+                    }
+                    
+                    if (!appState.selectedAgentId) {
+                        const firstAgentId = agentIds[0];
+                        selectAgent(firstAgentId);
+                    }
                 } else {
                     renderChatMessages();
                 }
             } catch (error) {
                 console.error(`Error loading data for scan ${scanId}:`, error);
+            }
+        }
+
+        function showPreparingScanMessage() {
+            const chatContainer = document.querySelector('.chat-container');
+            if (!chatContainer) return;
+            
+            chatContainer.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 2rem; text-align: center;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+                    <h2 style="color: var(--text-primary); margin-bottom: 0.5rem;">Preparando scan...</h2>
+                    <p style="color: var(--text-muted);">Clonando repositórios e inicializando agentes. Isso pode levar alguns momentos.</p>
+                </div>
+            `;
+        }
+
+        function hidePreparingScanMessage() {
+            const chatContainer = document.querySelector('.chat-container');
+            if (chatContainer && chatContainer.innerHTML.includes('Preparando scan')) {
+                chatContainer.innerHTML = '';
             }
         }
 
@@ -1891,15 +1957,27 @@
             }
 
             try {
-                const messagesResponse = await fetch(`/api/scans/${scanId}/agents/${agentId}/messages`);
-                const messagesData = await messagesResponse.json();
+                const [messagesResponse, toolsResponse] = await Promise.all([
+                    fetch(`/api/scans/${scanId}/agents/${agentId}/messages`).catch(err => {
+                        console.error(`Error loading messages for agent ${agentId}:`, err);
+                        return { ok: false, json: async () => ({ messages: [] }) };
+                    }),
+                    fetch(`/api/scans/${scanId}/agents/${agentId}/tools`).catch(err => {
+                        console.error(`Error loading tools for agent ${agentId}:`, err);
+                        return { ok: false, json: async () => ({ tools: [] }) };
+                    })
+                ]);
+
+                const [messagesData, toolsData] = await Promise.all([
+                    messagesResponse.json(),
+                    toolsResponse.json()
+                ]);
+
                 appState.messages[agentId] = (messagesData.messages || []).map(msg => ({
                     ...msg,
                     timestamp: new Date(msg.timestamp)
                 }));
 
-                const toolsResponse = await fetch(`/api/scans/${scanId}/agents/${agentId}/tools`);
-                const toolsData = await toolsResponse.json();
                 appState.toolExecutions[agentId] = (toolsData.tools || []).map(tool => ({
                     ...tool,
                     timestamp: new Date(tool.timestamp || tool.started_at)
@@ -1989,6 +2067,22 @@
                     }
                     break;
                 case 'scan_created':
+                    if (message.data && message.scan_id) {
+                        const scanData = message.data;
+                        const existingIndex = appState.scans.findIndex(s => s.scan_id === message.scan_id);
+                        if (existingIndex >= 0) {
+                            appState.scans[existingIndex] = scanData;
+                        } else {
+                            appState.scans.push(scanData);
+                        }
+                        if (message.scan_id === appState.currentScanId && scanData.status === 'created') {
+                            loadScanData(message.scan_id);
+                        }
+                        if (document.getElementById('scansListView').classList.contains('active')) {
+                            renderScansList();
+                        }
+                    }
+                    break;
                 case 'scan_updated':
                     if (message.data && message.scan_id) {
                         const scanData = message.data;
@@ -1998,14 +2092,12 @@
                         } else {
                             appState.scans.push(scanData);
                         }
-                        
+                        if (message.scan_id === appState.currentScanId && scanData.status === 'created') {
+                            loadScanData(message.scan_id);
+                        }
                         if (document.getElementById('scansListView').classList.contains('active')) {
                             renderScansList();
                         }
-                    }
-                    
-                    if (message.scan_id === appState.currentScanId) {
-                        loadScanData(appState.currentScanId);
                     }
                     break;
                 case 'scan_deleted':

@@ -1,49 +1,49 @@
 # Strix Frontend
 
-Frontend Next.js para a interface web do Strix.
+Next.js frontend for Strix web interface.
 
-## Desenvolvimento
+## Development
 
-### Pré-requisitos
+### Prerequisites
 
 - Node.js 18+ 
-- npm ou yarn
+- npm or yarn
 
-### Instalação
+### Installation
 
 ```bash
 npm install
 ```
 
-### Executar em modo desenvolvimento
+### Run in development mode
 
 ```bash
 npm run dev
 ```
 
-O frontend estará disponível em `http://localhost:3000`.
+The frontend will be available at `http://localhost:3000`.
 
-### Build para produção
+### Build for production
 
 ```bash
 npm run build
 ```
 
-O build será gerado em `.next/`. O backend Python servirá automaticamente o build quando disponível.
+The build will be generated in `.next/`. The Python backend will automatically serve the build when available.
 
-## Estrutura
+## Structure
 
-- `src/app/` - Páginas Next.js (App Router)
-- `src/components/` - Componentes React
-- `src/hooks/` - Hooks customizados
-- `src/lib/` - Utilitários (API client, WebSocket)
-- `src/types/` - Definições TypeScript
+- `src/app/` - Next.js Pages (App Router)
+- `src/components/` - React Components
+- `src/hooks/` - Custom Hooks
+- `src/lib/` - Utilities (API client, WebSocket)
+- `src/types/` - TypeScript Definitions
 
-## Integração com Backend
+## Backend Integration
 
-O frontend se conecta ao backend Python FastAPI via:
-- REST API em `/api/*`
-- WebSocket em `/ws`
+The frontend connects to the Python FastAPI backend via:
+- REST API at `/api/*`
+- WebSocket at `/ws`
 
-As requisições são redirecionadas via `next.config.js` para o backend em `http://127.0.0.1:8080`.
+Requests are redirected via `next.config.js` to the backend at `http://127.0.0.1:8080`.
 

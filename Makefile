@@ -27,12 +27,12 @@ help:
 	@echo "  clean         - Clean up cache files and artifacts"
 
 install:
-	@echo "Instalando dependências do backend..."
+	@echo "Installing backend dependencies..."
 	poetry install --only=main
 	pipx install . --force
-	@echo "Instalando dependências do frontend..."
+	@echo "Installing frontend dependencies..."
 	cd frontend && npm install
-	@echo "Instalação completa!"
+	@echo "Installation complete!"
 
 run-server:
 	poetry install
@@ -42,10 +42,10 @@ frontend-dev:
 	cd frontend && npm run dev
 
 run-all:
-	@echo "Iniciando backend e frontend..."
-	@echo "Backend estará disponível em http://127.0.0.1:8000"
-	@echo "Frontend estará disponível em http://localhost:3000"
-	@echo "Pressione Ctrl+C para parar ambos os servidores"
+	@echo "Starting backend and frontend..."
+	@echo "Backend will be available at http://127.0.0.1:8000"
+	@echo "Frontend will be available at http://localhost:3000"
+	@echo "Press Ctrl+C to stop both servers"
 	@poetry install
 	@bash -c 'trap "kill 0" EXIT INT TERM; \
 	poetry run python -m strix.interface.main --server --web-port 8000 & \

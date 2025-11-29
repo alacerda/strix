@@ -124,6 +124,95 @@ class ScanManager:
                     cls._instance = cls()
         return cls._instance
 
+    def create_pending_scan(
+        self,
+        targets: list[dict[str, Any]],
+        user_instructions: str = "",
+        run_name: Optional[str] = None,
+        max_iterations: int = 300,
+    ) -> str:
+        """Create a pending scan without StrixAgent (fast, non-blocking)."""
+        scan_id = run_name or f"scan-{uuid4().hex[:8]}"
+
+        # Create tracer
+        tracer = Tracer(scan_id)
+        scan_config = {
+            "scan_id": scan_id,
+            "targets": targets,
+            "user_instructions": user_instructions,
+            "run_name": scan_id,
+        }
+        tracer.set_scan_config(scan_config)
+
+        # Create minimal agent config (without StrixAgent yet)
+        agent_config = {
+            "max_iterations": max_iterations,
+            "tracer": tracer,
+        }
+
+        # Create scan info with None agent (will be set later)
+        scan_info = ScanInfo(scan_id, tracer, None, scan_config, agent_config)
+        scan_info.status = "pending"
+        scan_info.save_metadata()
+
+        with self._lock:
+            self._scans[scan_id] = scan_info
+
+        logger.info(f"Created pending scan {scan_id}")
+        return scan_id
+
+    def complete_scan_preparation(
+        self,
+        scan_id: str,
+        local_sources: Optional[list[dict[str, str]]] = None,
+    ) -> None:
+        """Complete scan preparation by creating StrixAgent."""
+        with self._lock:
+            scan_info = self._scans.get(scan_id)
+            if not scan_info:
+                raise ValueError(f"Scan {scan_id} not found")
+            if scan_info.status != "pending":
+                logger.warning(f"Scan {scan_id} is not pending, status: {scan_info.status}")
+                return
+
+        # Create agent config
+        llm_config = LLMConfig()
+        agent_config = {
+            "llm_config": llm_config,
+            "max_iterations": scan_info.agent_config.get("max_iterations", 300),
+            "tracer": scan_info.tracer,
+        }
+        if local_sources:
+            agent_config["local_sources"] = local_sources
+
+        from strix.telemetry.tracer import set_context_tracer
+
+        previous_context_tracer = None
+        try:
+            from strix.telemetry.tracer import get_context_tracer
+
+            previous_context_tracer = get_context_tracer()
+        except Exception:
+            pass
+
+        set_context_tracer(scan_info.tracer)
+
+        try:
+            agent = StrixAgent(agent_config)
+        finally:
+            if previous_context_tracer is not None:
+                set_context_tracer(previous_context_tracer)
+            else:
+                set_context_tracer(None)
+
+        # Update scan info with agent
+        scan_info.agent = agent
+        scan_info.agent_config = agent_config
+        scan_info.status = "created"
+        scan_info.save_metadata()
+
+        logger.info(f"Completed preparation for scan {scan_id}")
+
     def create_scan(
         self,
         targets: list[dict[str, Any]],
