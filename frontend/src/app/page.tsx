@@ -42,13 +42,16 @@ export default function HomePage() {
     };
   }, [on, router]);
 
-  const handleCreateScan = async (request: CreateScanRequest) => {
-    try {
-      await createScan(request);
-      setShowCreateForm(false);
-    } catch (err) {
-      throw err;
-    }
+  const handleCreateScan = (request: CreateScanRequest) => {
+    setShowCreateForm(false);
+    
+    createScan(request)
+      .then(() => {
+      })
+      .catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        alert(`Failed to create scan: ${errorMessage}`);
+      });
   };
 
   const handleDeleteScan = async (scanId: string) => {

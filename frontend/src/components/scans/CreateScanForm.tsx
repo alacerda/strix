@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { CreateScanRequest } from '@/types';
 
 interface CreateScanFormProps {
-  onSubmit: (request: CreateScanRequest) => Promise<void>;
+  onSubmit: (request: CreateScanRequest) => void;
   onCancel: () => void;
 }
 
@@ -13,34 +13,27 @@ export function CreateScanForm({ onSubmit, onCancel }: CreateScanFormProps) {
   const [userInstructions, setUserInstructions] = useState('');
   const [runName, setRunName] = useState('');
   const [maxIterations, setMaxIterations] = useState(300);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
-    try {
-      const validTargets = targets.filter((t) => t.trim() !== '');
-      if (validTargets.length === 0) {
-        setError('At least one target is required');
-        setLoading(false);
-        return;
-      }
-
-      const request: CreateScanRequest = {
-        targets: validTargets,
-        user_instructions: userInstructions || undefined,
-        run_name: runName || undefined,
-        max_iterations: maxIterations,
-      };
-
-      await onSubmit(request);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create scan');
-      setLoading(false);
+    const validTargets = targets.filter((t) => t.trim() !== '');
+    if (validTargets.length === 0) {
+      setError('At least one target is required');
+      return;
     }
+
+    const request: CreateScanRequest = {
+      targets: validTargets,
+      user_instructions: userInstructions || undefined,
+      run_name: runName || undefined,
+      max_iterations: maxIterations,
+    };
+
+    onSubmit(request);
+    onCancel();
   };
 
   const addTarget = () => {
@@ -165,10 +158,9 @@ export function CreateScanForm({ onSubmit, onCancel }: CreateScanFormProps) {
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-primary-green text-white rounded font-semibold hover:bg-primary-green-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-primary-green text-white rounded font-semibold hover:bg-primary-green-dark"
             >
-              {loading ? 'Creating...' : 'Create Scan'}
+              Create Scan
             </button>
           </div>
         </form>

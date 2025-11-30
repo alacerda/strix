@@ -1748,7 +1748,7 @@
             });
         }
 
-        document.getElementById('createScanForm').addEventListener('submit', async (e) => {
+        document.getElementById('createScanForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
             const targets = Array.from(formData.getAll('target')).filter(t => t.trim());
@@ -1764,25 +1764,26 @@
                 run_name: formData.get('runName') || null,
             };
 
-            try {
-                const response = await fetch('/api/scans', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestData),
-                });
+            document.getElementById('createScanModal').classList.remove('active');
+            e.target.reset();
 
+            fetch('/api/scans', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData),
+            })
+            .then(response => {
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Failed to create scan');
+                    return response.json().then(error => {
+                        throw new Error(error.detail || 'Failed to create scan');
+                    });
                 }
-
-                const data = await response.json();
+                return response.json();
+            })
+            .then(data => {
                 const scanId = data.scan_id;
-                
-                document.getElementById('createScanModal').classList.remove('active');
-                e.target.reset();
                 
                 const existingIndex = appState.scans.findIndex(s => s.scan_id === scanId);
                 if (existingIndex >= 0) {
@@ -1803,10 +1804,11 @@
                 }
                 
                 showScanView(scanId);
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error creating scan:', error);
                 alert(`Error creating scan: ${error.message}`);
-            }
+            });
         });
 
         // Load scan data
